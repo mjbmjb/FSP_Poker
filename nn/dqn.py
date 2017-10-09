@@ -216,7 +216,7 @@ class DQN(nn.Module):
         self.fc2.weight.data.normal_(0, 0.01)
 #        self.fc3 = nn.Linear(64,32)
 #        self.fc3.weight.data.normal_(0, 0.01)
-        self.out = nn.Linear(128, 5)
+        self.out = nn.Linear(128, 4)
         self.out.weight.data.normal_(0, 0.01)
 
     def forward(self, x):
@@ -322,7 +322,7 @@ class DQNOptim:
         self.plt.pause(0.001)  # pause a bit so that plots are updated
         if is_ipython:
             display.clear_output(wait=True)
-#            display.display(self.plt.gcf()
+            display.display(self.plt.gcf())
     
     def plot_error_vis(self, step):
         if not self.viz:
@@ -377,8 +377,8 @@ class DQNOptim:
         # We don't want to backprop through the expected action values and volatile
         # will save us on temporarily changing the model parameters'
         # requires_grad to False!
-        if len([s for s in batch.next_state if s is not None]) == 0 :
-            return
+#        if len([s for s in batch.next_state if s is not None]) == 0 :
+#            return
         non_final_next_states = Variable(torch.cat([s for s in batch.next_state
                                                     if s is not None]),
                                          volatile=True)
@@ -412,7 +412,7 @@ class DQNOptim:
 #        self.current_sum = (self.steps_done / (self.steps_done + 1.0)) * self.current_sum + loss.data[0]/(self.steps_done + 1)
 #        print(self.steps_done)
 #        print(self.current_sum)
-#        self.current_sum = loss.data[0]
+        self.current_sum = loss.data[0]
 #        print(self.current_sum)
 
         # Optimize the model

@@ -35,8 +35,8 @@ class Env:
     def __init__(self):
         params = {}
         params['root_node'] = {}
-        params['root_node']['board'] = card_to_string.string_to_board('Ks')
-        params['root_node']['street'] = 1
+        params['root_node']['board'] = card_to_string.string_to_board('')
+        params['root_node']['street'] = 0
         params['root_node']['current_player'] = constants.players.P1
         params['root_node']['bets'] = arguments.Tensor([100, 100])
         params['limit_to_street'] = False
@@ -99,7 +99,7 @@ class Env:
             real_next_state = next_state
 
         else:
-#            next_state_tensor = builder.statenode_to_tensor(next_state)
+            next_state_tensor = builder.statenode_to_tensor(next_state)
 #            oppo_action = int((agent.sl.select_action(next_state) if random.random() > arguments.eta \
 #                          else agent.rl.select_action(next_state_tensor))[0][0])
             oppo_action = int(agent.sl.select_action(next_state)[0][0])  

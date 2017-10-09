@@ -20,6 +20,7 @@ from itertools import count
 from nn.env import Env
 from nn.dqn import DQN
 from nn.dqn import DQNOptim
+from nn.net_sl import SLOptim
 from nn.table_sl import TableSL
 from nn.state import GameState
 from Tree.tree_builder import PokerTreeBuilder
@@ -51,7 +52,7 @@ def save_model(episod):
     rl_name = path + "Iter:" + str(episod)
     memory_name = path + 'Iter:' + str(episod)   
     # save sl strategy
-    torch.save(table_sl.strategy, sl_name)
+#    torch.save(table_sl.strategy, sl_name)
     # save rl strategy
     # 1.0 save the prarmeter
     torch.save(agent0.rl.model.state_dict(), rl_name + '_0_' + '.rl')
@@ -100,6 +101,8 @@ def main():
         load_model(dqn_optim, arguments.load_model_num)
     
     for i_episode in range(arguments.epoch_count + 1):
+        agents[0], agents[1] = agents[1], agents[0] 
+        
         # choose policy 0-sl 1-rl
         flag = 0 if random.random() > arguments.eta else 1
         
@@ -115,14 +118,14 @@ def main():
             
             if flag == 0:
                 # sl
-                action = table_sl.select_action(state)
+                action = agents[current_player].sl.select_action(state)
             elif flag == 1:
                 #rl
                 action = agents[current_player].rl.select_action(state_tensor)
             else:
                 assert(False)
                 
-            next_state, real_next_state, reward, done = env.step(agent0, state, action)
+            next_state, real_next_state, reward, done = env.step(agents[1-current_player], state, action)
 #            reward = reward / 2400.0
             
             # transform to tensor
@@ -134,14 +137,18 @@ def main():
             agents[current_player].rl.memory.push(state_tensor, action_tensor, real_next_state_tensor, arguments.Tensor([reward]))
                 
             training_flag = False
-            if len(agents[current_player].rl.memory.memory) >= agents[current_player].rl.memory.capacity / 2:
+
+            if True or len(agents[current_player].rl.memory.memory) == agents[current_player].rl.memory.capacity:
+
                 training_flag = True
                 if flag == 1:
                     # if choose sl store tuple(s,a) in supervised learning memory Msl
-                    table_sl.store(state, action)
+                    agents[current_player].sl.memory.push(state_tensor, action_tensor[0])
                     table_update_num = table_update_num + 1
                     if table_update_num >= arguments.sl_update_num:
-                        table_sl.update_strategy()
+                        agents[current_player].sl.update_strategy()
+#                        agents[current_player].sl.optimize_model()
+#                        agents[current_player].sl.plot_error_vis(i_episode)
                         table_update_num = 0
                 
                 # Perform one step of the optimization (on the target network)
@@ -152,7 +159,8 @@ def main():
             # update the target net work
             if agents[current_player].rl.steps_done > 0 and agents[current_player].rl.steps_done % 300 == 0 and training_flag:
                 agents[current_player].rl.target_net.load_state_dict(agents[current_player].rl.model.state_dict())
-#                dqn_optim.plot_error_vis()
+#                agents[current_player].rl.plot_error_vis(i_episode)
+#                agents[current_player].sl.plot_error_vis(i_episode)
             
 #            if i_episode % 1000 == 0 and training_flag:
 #                print(len(agents[current_player].rl.memory.memory))
@@ -163,7 +171,7 @@ def main():
 #                    agents[current_player].rl.plot_error_vis(i_episode)
                 if(i_episode % arguments.save_epoch == 0 and training_flag):
                     save_model(i_episode)
-                    value_tester.test(table_sl.strategy.clone(), i_episode)
+#                    value_tester.test(agents[current_player].sl.strategy.clone(), i_episode)
 #                    save_table_csv(table_sl.strategy)
 #                dqn_optim.episode_durations.append(t + 1)
 #                dqn_optim.plot_durations()
