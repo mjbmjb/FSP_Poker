@@ -10,6 +10,7 @@ import torch
 import Settings.arguments as arguments
 import Settings.constants as constants
 import Settings.game_settings as game_settings
+import numpy as np
 
 class TableSL:
     def __init__(self):
@@ -27,13 +28,13 @@ class TableSL:
         hand_id = int(state.private[state.node.current_player][0])
         policy = self.strategy[state_id,hand_id,:] / self.strategy[state_id,hand_id,:].sum()
 
-        random_num = torch.rand(1)
-        for i in range(game_settings.actions_count):
-            if random_num.sub_(policy[i])[0] <= 0:
-                return arguments.LongTensor([[i]])
+        action = arguments.LongTensor([np.random.choice(np.arange(game_settings.actions_count),\
+                                                         1,\
+                                                         replace=False,\
+                                                         p=policy.numpy())])
+        return action
 
-
-    def store(self, state, action):
+    def push(self, state, action):
 #        self.update_counter = self.update_counter + 1
 #        print(self.memory.max(0))
         

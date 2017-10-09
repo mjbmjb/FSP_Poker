@@ -346,6 +346,7 @@ class PokerTreeBuilder:
             
       
       # transform hand(private and board)
+#      print(len(state.private))
       assert(len(state.private) == 2)
       private_tensor = card_tools.hand_to_tensor(arguments.Tensor(state.private[node.current_player]))
       board_tensor = card_tools.hand_to_tensor(node.board)
