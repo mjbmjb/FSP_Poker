@@ -134,7 +134,7 @@ def main():
             agents[current_player].rl.memory.push(state_tensor, action_tensor, real_next_state_tensor, arguments.Tensor([reward]))
                 
             training_flag = False
-            if len(agents[current_player].rl.memory.memory) == agents[current_player].rl.memory.capacity:
+            if len(agents[current_player].rl.memory.memory) >= agents[current_player].rl.memory.capacity / 2:
                 training_flag = True
                 if flag == 1:
                     # if choose sl store tuple(s,a) in supervised learning memory Msl

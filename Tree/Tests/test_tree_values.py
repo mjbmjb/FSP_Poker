@@ -37,10 +37,10 @@ class ValuesTester:
         node.table = torch.transpose(all_table.clone(),0,1)
         
     #    print(node.node_id)
-        for i in range(node.table.size(0)):
-            node.table[i,:].div_(node.table[i,:].sum())
+        for i in range(node.table.size(1)):
+            node.table[:,i].div_(node.table[:,i].sum())
         
-        node.strategy = torch.transpose(node.table,0,1).clone()
+        node.strategy = node.table.clone()
     
 #        print(node.strategy)
         children = node.children
@@ -63,9 +63,6 @@ class ValuesTester:
         tree = builder.build_tree(params)
         
 #        table_sl = torch.load('/home/mjb/Nutstore/deepStack/Data/Model/Iter:' + str(model_num) + '.sl')
-        
-        self.dfs_fill_table(tree, table_sl,builder)
-        
         #constract the starting range
         filling = StrategyFilling()
 
