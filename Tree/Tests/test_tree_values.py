@@ -37,10 +37,10 @@ class ValuesTester:
         node.table = torch.transpose(all_table.clone(),0,1)
         
     #    print(node.node_id)
-        for i in range(all_table.size(0)):
-            all_table[i,:].div_(all_table[i,:].sum())
+        for i in range(node.table.size(0)):
+            node.table[i,:].div_(node.table[i,:].sum())
         
-        node.strategy = torch.transpose(all_table,0,1).clone()
+        node.strategy = torch.transpose(node.table,0,1).clone()
     
 #        print(node.strategy)
         children = node.children
