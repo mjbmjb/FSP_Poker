@@ -34,8 +34,8 @@ value_tester = ValuesTester()
 
 Agent = namedtuple('Agent',['rl','sl'])
 
-agent0 = Agent(rl=DQNOptim(),sl=TableSL())
-agent1 = Agent(rl=DQNOptim(),sl=TableSL())
+agent0 = Agent(rl=DQNOptim(),sl=SLOptim())
+agent1 = Agent(rl=DQNOptim(),sl=SLOptim())
 table_sl = agent0.sl
 agents = [agent0,agent1]
 
@@ -118,7 +118,7 @@ def main():
             
             if flag == 0:
                 # sl
-                action = agents[current_player].sl.select_action(state)
+                action = agents[current_player].sl.select_action(state_tensor)
             elif flag == 1:
                 #rl
                 action = agents[current_player].rl.select_action(state_tensor)
@@ -138,16 +138,16 @@ def main():
                 
             training_flag = False
 
-            if True or len(agents[current_player].rl.memory.memory) == agents[current_player].rl.memory.capacity:
+            if len(agents[current_player].rl.memory.memory) >= agents[current_player].rl.memory.capacity:
 
                 training_flag = True
                 if flag == 1:
                     # if choose sl store tuple(s,a) in supervised learning memory Msl
                     agents[current_player].sl.memory.push(state_tensor, action_tensor[0])
                     table_update_num = table_update_num + 1
-                    if table_update_num >= arguments.sl_update_num:
-                        agents[current_player].sl.update_strategy()
-#                        agents[current_player].sl.optimize_model()
+                    if True or table_update_num >= arguments.sl_update_num:
+#                        agents[current_player].sl.update_strategy()
+                        agents[current_player].sl.optimize_model()
 #                        agents[current_player].sl.plot_error_vis(i_episode)
                         table_update_num = 0
                 
@@ -171,6 +171,7 @@ def main():
 #                    agents[current_player].rl.plot_error_vis(i_episode)
                 if(i_episode % arguments.save_epoch == 0 and training_flag):
                     save_model(i_episode)
+                    value_tester.test(agents[current_player].sl)
 #                    value_tester.test(agents[current_player].sl.strategy.clone(), i_episode)
 #                    save_table_csv(table_sl.strategy)
 #                dqn_optim.episode_durations.append(t + 1)

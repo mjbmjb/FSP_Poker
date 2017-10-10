@@ -102,7 +102,7 @@ class Env:
             next_state_tensor = builder.statenode_to_tensor(next_state)
 #            oppo_action = int((agent.sl.select_action(next_state) if random.random() > arguments.eta \
 #                          else agent.rl.select_action(next_state_tensor))[0][0])
-            oppo_action = int(agent.sl.select_action(next_state)[0][0])  
+            oppo_action = int(agent.sl.select_action(next_state_tensor)[0][0])  
             if oppo_action >= len(next_node.children):
                 oppo_action = 1
             real_next_node = next_node.children[oppo_action]

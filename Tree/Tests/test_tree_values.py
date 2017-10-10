@@ -71,7 +71,8 @@ class ValuesTester:
                 state.private.append(arguments.Tensor([card]))
             state.node = node
             tensor = builder.statenode_to_tensor(state)
-            strategy = agent_sl.model(Variable(tensor)).data[0:len(node.children)]
+            strategy = agent_sl.model(Variable(tensor)).data[0][0:len(node.children)]
+            strategy.div_(strategy.sum())
             node.strategy[:,card] = strategy
 
         children = node.children
@@ -108,8 +109,8 @@ class ValuesTester:
         starting_ranges[0].copy_(range1)
         starting_ranges[1].copy_(range2)
         
-        self.dfs_fill_table(tree, table_sl,builder)
-#        self.dfs_fill_strategy(table_sl,tree, builder)
+#        self.dfs_fill_table(tree, table_sl,builder)
+        self.dfs_fill_strategy(table_sl,tree, builder)
         
         tree_values = TreeValues()
         tree_values.compute_values(tree, starting_ranges)
@@ -123,7 +124,7 @@ class ValuesTester:
         
 if __name__ == '__main__':
     tester = ValuesTester()
-    table_sl = torch.load('/home/mjb/Nutstore/deepStack/Data/Model/Iter:' + str(100000) + '.sl')
-    tester.test(table_sl.clone())
-#    optim = SLOptim()
-#    tester.test(optim)
+#    table_sl = torch.load('/home/mjb/Nutstore/deepStack/Data/Model/Iter:' + str(100000) + '.sl')
+#    tester.test(table_sl.clone())
+    optim = SLOptim()
+    tester.test(optim)
