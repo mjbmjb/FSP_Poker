@@ -210,7 +210,7 @@ class DQN(nn.Module):
 
     def __init__(self):
         super(DQN, self).__init__()
-        self.fc1 = nn.Linear(23, 64)
+        self.fc1 = nn.Linear(27, 64)
         self.fc1.weight.data.normal_(0, 0.01)
         self.fc2 = nn.Linear(64,128)
         self.fc2.weight.data.normal_(0, 0.01)

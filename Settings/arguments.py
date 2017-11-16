@@ -24,18 +24,18 @@ bet_sizing = [1]
 # server running the ACPC dealer
 acpc_server = "localhost"
 # server port running the ACPC dealer
-acpc_server_port = 20000
+acpc_server_port = 500
 # the number of betting rounds in the game
-streets_count = 2
+streets_count = 4
 # the tensor datatype used for storing DeepStack's internal data
 Tensor = torch.FloatTensor
 LongTensor = torch.LongTensor
 # the directory for data files
 data_directory = 'Data/'
 # the size of the game's ante, in chips
-ante = 100
+ante = 50
 # the size of each player's stack, in chips
-stack = 400
+stack = 200
 # the number of iterations that DeepStack runs CFR for
 cfr_iters = 1000
 # the number of preliminary CFR iterations which DeepStack doesn't factor into the average strategy (included in cfr_iters)

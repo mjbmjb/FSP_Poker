@@ -119,8 +119,8 @@ class ValuesTester:
         
         print('Exploitability: ' + str(tree.exploitability) + '[chips]' )
         
-        visualiser = TreeVisualiser()
-        visualiser.graphviz(tree,'test_values')
+#        visualiser = TreeVisualiser()
+#        visualiser.graphviz(tree,'test_values')
         
 if __name__ == '__main__':
     tester = ValuesTester()

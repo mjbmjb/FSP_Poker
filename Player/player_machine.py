@@ -12,25 +12,33 @@ from nn.table_sl import TableSL
 from Tree.tree_builder import PokerTreeBuilder
 import Settings.arguments as arguments
 import Settings.constants as constants
+import Settings.game_settings as game_settings
 from Game.bet_sizing import BetSizing
+from nn.net_sl import SLOptim
 
 class PlayerMachine:
     
     def __init__(self):
         self.dqn_optim = DQNOptim()
         self.table_sl = TableSL()
+        self.net_sl = [SLOptim(),SLOptim()]
         
         
     
     
-    def load_model(self, iter_time):
+    def load_model(self, iter_time, is_table=False):
         iter_str = str(iter_time)
         # load rl model (only the net)
-        self.dqn_optim.model.load_state_dict(torch.load('../Data/Model/Iter:' + iter_str + '.rl'))
-        self.dqn_optim.target_net.load_state_dict(self.dqn_optim.model.state_dict())
+#        self.dqn_optim.model.load_state_dict(torch.load('../Data/Model/Iter:' + iter_str + '.rl'))
+#        self.dqn_optim.target_net.load_state_dict(self.dqn_optim.model.state_dict())
+        
         # load sl model
-        self.table_sl.strategy = torch.load('../Data/Model/Iter:' + iter_str + '.sl')
-    
+        if is_table:
+            self.table_sl.strategy = torch.load('../Data/Model/Iter:' + iter_str + '.sl')
+        else:
+            self.net_sl[0].model.load_state_dict(torch.load('../Data/Model/Iter:' + iter_str + '_0_' + '.sl'))
+            self.net_sl[1].model.load_state_dict(torch.load('../Data/Model/Iter:' + iter_str + '_1_' + '.sl'))
+        
     # return int action['action:  ,'raise_amount':  ]
     def compute_action(self, state):
         
@@ -41,9 +49,11 @@ class PlayerMachine:
         # !!!! the return action is a longTensor[[]]
 #        action_id = (self.table_sl.select_action(state) if random.random() > arguments.eta \
 #                 else self.dqn_optim.select_action(state_tensor))[0][0]
-        action_id = self.table_sl.select_action(state)[0][0]       
-                      
-                      
+#        action_id = self.table_sl.select_action(state)[0][0]
+        action_id = self.net_sl[state.node.current_player].select_action(state_tensor)[0][0]
+#        print('_____________')
+#        print(action_id)
+#        print('_____________')
         # action['action:  ,'raise_amount':  ]
         action = {}
         
@@ -51,7 +61,7 @@ class PlayerMachine:
         if action_id == 0:
             action['action'] = constants.acpc_actions.fold
         # call        
-        elif action_id == 1:
+        elif action_id == 1 or action_id >= game_settings.actions_count:
             action['action'] = constants.acpc_actions.ccall
         #raise
         elif action_id > 1:

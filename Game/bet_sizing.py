@@ -11,6 +11,7 @@ Created on Wed Aug 23 00:36:17 2017
 # @classmod bet_sizing
 
 import Settings.arguments as arguments
+import Settings.game_settings as game_settings
 import torch
 
 
@@ -33,9 +34,8 @@ class BetSizing:
     # containing N sets of new commitment levels for each player
     def get_possible_bets(self, node):
       current_player = node.current_player
-      assert(current_player == 0 or current_player == 1)#, 'Wrong player for bet size computation')
-      opponent = 1 - node.current_player 
-      opponent_bet = node.bets[opponent]
+      assert(current_player >= 0 and current_player < game_settings.player_count)#, 'Wrong player for bet size computation') 
+      opponent_bet = node.bets.max()
     
       assert(node.bets[current_player] <= opponent_bet)
       
@@ -48,13 +48,17 @@ class BetSizing:
       if min_raise_size == 0: 
         return arguments.Tensor()
       elif min_raise_size == max_raise_size:
-        out = arguments.Tensor(1,2).fill_(opponent_bet)
+        out = arguments.Tensor(1,game_settings.player_count)
+        out[0] = node.bets.clone()
         out[0][current_player] = opponent_bet + min_raise_size
         return out
       else:
          #iterate through all bets and check if they are possible
          max_possible_bets_count = self.pot_fractions.size(0) + 1 #we can always go allin 
-         out = arguments.Tensor(max_possible_bets_count,2).fill_(opponent_bet)
+#         out = arguments.Tensor(max_possible_bets_count,game_settings.player_count).copy_(node.bets)
+         out = arguments.Tensor(max_possible_bets_count, game_settings.player_count)
+         for i in range(max_possible_bets_count):
+             out[i] = node.bets.clone()
          
          #take pot size after opponent bet is called
          pot = opponent_bet * 2

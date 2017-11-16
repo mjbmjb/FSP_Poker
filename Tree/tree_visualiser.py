@@ -76,23 +76,23 @@ class TreeVisualiser:
     # stored in the `ranges_absolute`, `cf_values`, or `cf_values_br` fields of
     # the node.
     # @local
-    def add_range_info(self, node):
-      out = ""
-      
+#    def add_range_info(self, node):
+#      out = ""
+#      
+##      if(node.ranges_absolute.dim() != 0): 
 #      if(node.ranges_absolute.dim() != 0): 
-      if(node.ranges_absolute.dim() != 0): 
-        out = out + self.add_tensor(node.ranges_absolute, 'abs_range')
-    
-      if(node.cf_values.dim() != 0):
-        #cf values computed by real tree dfs
-        out = out + self.add_tensor(node.cf_values, 'cf_values')
-
-      if(node.cf_values_br.dim() != 0):
-        #cf values that br has in real tree
-        out = out + self.add_tensor(node.cf_values_br, 'cf_values_br')
-
-      
-      return out
+#        out = out + self.add_tensor(node.ranges_absolute, 'abs_range')
+#    
+#      if(node.cf_values.dim() != 0):
+#        #cf values computed by real tree dfs
+#        out = out + self.add_tensor(node.cf_values, 'cf_values')
+#
+#      if(node.cf_values_br.dim() != 0):
+#        #cf values that br has in real tree
+#        out = out + self.add_tensor(node.cf_values_br, 'cf_values_br')
+#
+#      
+#      return out
     
     # Generates data for a graphical representation of a node in a public tree.
     # @param node the node to generate data for
@@ -112,8 +112,13 @@ class TreeVisualiser:
         else:
           assert(True)#'unknown terminal node type')
       else:
-        out['label'] = out['label'] + '| bet1: ' + str(node.bets[constants.players.P1]) + '| bet2: ' + str(node.bets[constants.players.P2])
-        
+        out['label'] = out['label'] + '| bet0: ' + str(node.bets[0]) + ' ' + str(node.active[0]) +\
+                                      '| bet1: ' + str(node.bets[1]) + ' ' + str(node.active[1]) +\
+                                      '| bet2: ' + str(node.bets[2]) + ' ' + str(node.active[2]) 
+#                                      '| bet3: ' + str(node.bets[3]) + ' ' + str(node.active[3]) +\
+#                                      '| bet4: ' + str(node.bets[4]) + ' ' + str(node.active[4]) +\
+#                                      '| bet5: ' + str(node.bets[5]) + ' ' + str(node.active[5])
+#        
         if node.street != None:
           out['label'] = out['label'] + '| street: ' + str(node.street)
           out['label'] = out['label'] + '| board: ' + card_to_string.cards_to_string(node.board)
@@ -129,15 +134,15 @@ class TreeVisualiser:
 #      if node.margin != None:
 #        out['label'] = out['label'] +  '| margin: ' + node.margin
     
-      out['label'] = out['label'] + self.add_range_info(node)  
+#      out['label'] = out['label'] + self.add_range_info(node)  
 #      
-      if node.cfv_infset.dim() != 0:
-        out['label'] = out['label'] +  '| cfv1: ' + str(node.cfv_infset[0])
-        out['label'] = out['label'] +  '| cfv2: ' + str(node.cfv_infset[1])
-        out['label'] = out['label'] +  '| cfv_br1: ' + str(node.cfv_br_infset[0])
-        out['label'] = out['label'] +  '| cfv_br2: ' + str(node.cfv_br_infset[1])
-        out['label'] = out['label'] +  '| epsilon1: ' + str(node.epsilon[0])
-        out['label'] = out['label'] +  '| epsilon2: ' + str(node.epsilon[1])  
+#      if node.cfv_infset.dim() != 0:
+#        out['label'] = out['label'] +  '| cfv1: ' + str(node.cfv_infset[0])
+#        out['label'] = out['label'] +  '| cfv2: ' + str(node.cfv_infset[1])
+#        out['label'] = out['label'] +  '| cfv_br1: ' + str(node.cfv_br_infset[0])
+#        out['label'] = out['label'] +  '| cfv_br2: ' + str(node.cfv_br_infset[1])
+#        out['label'] = out['label'] +  '| epsilon1: ' + str(node.epsilon[0])
+#        out['label'] = out['label'] +  '| epsilon2: ' + str(node.epsilon[1])  
 #      
 #      if node.has_key('lookahead_coordinates'):
 #        out['label'] = out['label'] +  '| COORDINATES '
@@ -180,7 +185,7 @@ class TreeVisualiser:
       
       assert(child_id != -1)
       #TODO:strategy
-      out['strategy'] = self.add_tensor(node.strategy[child_id].view(1,-1), "", labels=card_to_string.card_to_string_table)
+#      out['strategy'] = self.add_tensor(node.strategy[child_id].view(1,-1), "", labels=card_to_string.card_to_string_table)
       
       self.edge_to_graphviz_counter = self.edge_to_graphviz_counter + 1
       return out
@@ -233,8 +238,8 @@ class TreeVisualiser:
           
       for i in range(len(edges)):
         edge = edges[i]
-        edge_text = str(edge['id_from']) + ':f0 -> ' + str(edge['id_to']) + ':f0 [ id = ' + str(edge['id']) + ' label = "' + edge['strategy'] + '"];'
-        
+#        edge_text = str(edge['id_from']) + ':f0 -> ' + str(edge['id_to']) + ':f0 [ id = ' + str(edge['id']) + ' label = "' + edge['strategy'] + '"];'
+        edge_text = str(edge['id_from']) + ':f0 -> ' + str(edge['id_to']) + ':f0 [ id = ' + str(edge['id']) + ' label = "' + 'strategy' + '"];'
         out = out + edge_text
       out = out + '}'
         

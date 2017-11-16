@@ -48,11 +48,13 @@ def load_model(dqn_optim, iter_time):
 
 def save_model(episod):
     path = '../Data/Model/'
-    sl_name = path + "Iter:" + str(episod) + '.sl'
+    sl_name = path + "Iter:" + str(episod)
     rl_name = path + "Iter:" + str(episod)
     memory_name = path + 'Iter:' + str(episod)   
     # save sl strategy
 #    torch.save(table_sl.strategy, sl_name)
+    torch.save(agent0.sl.model.state_dict(), sl_name + '_0_' + '.sl')
+    torch.save(agent1.sl.model.state_dict(), sl_name + '_1_' + '.sl')
     # save rl strategy
     # 1.0 save the prarmeter
     torch.save(agent0.rl.model.state_dict(), rl_name + '_0_' + '.rl')
@@ -114,7 +116,7 @@ def main():
             current_player = state.node.current_player
             # Select and perform an action
 #            print(state_tensor.size(1))
-            assert(state_tensor.size(1) == 23)
+            assert(state_tensor.size(1) == 27)
             
             if flag == 0:
                 # sl
