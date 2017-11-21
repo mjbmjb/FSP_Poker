@@ -9,6 +9,7 @@ Created on Wed Aug 23 00:27:06 2017
 import sys
 sys.path.append('/home/mjb/Nutstore/deepStack/')
 
+import torch
 import Settings.game_settings as game_settings
 import Game.card_to_string as card_to_string
 import Settings.arguments as arguments
@@ -28,6 +29,7 @@ params['root_node']['street'] = 0
 params['root_node']['current_player'] = 2
 params['root_node']['bets'] = arguments.Tensor([50, 100, 0])
 params['limit_to_street'] = False
+params['root_node']['action_taken'] = torch.ByteTensor([1,1,0])
 tree = builder.build_tree(params)
 
 acc_list = []
@@ -36,6 +38,6 @@ builder.acc_node(tree, acc_node, acc_list)
 print(max(acc_list))
 print(builder.node_id_acc)
 
-visualiser = TreeVisualiser()
+#visualiser = TreeVisualiser()
 
-visualiser.graphviz(tree, "simple_tree")
+#visualiser.graphviz(tree, "simple_tree")

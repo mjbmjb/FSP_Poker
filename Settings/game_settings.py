@@ -12,14 +12,15 @@ Created on Sun Aug 20 00:33:16 2017
 
 
 # the number of card suits in the deck
-suit_count = 2
+suit_count = 4
 # the number of card ranks in the deck
-rank_count = 3
+rank_count = 13
 # the total number of cards in the deck
 card_count = suit_count * rank_count;
 # the number of public cards dealt in the game (revealed after the first
 # betting round)
-board_card_count = 1;
+board_card_count = 5;
+board_card_num = [0,3,1,1]
 # the number of players in the game 
 player_count = 3
 # mjb the num of raises

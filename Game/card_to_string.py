@@ -16,8 +16,8 @@ import Settings.arguments as arguments
 
 
 #All possible card suits - only the first 2 are used in Leduc Hold'e
-#suit_table = ['h', 's', 'c', 'd']
-suit_table = ['h', 's']
+suit_table = ['h', 's', 'c', 'd']
+#suit_table = ['h', 's']
 
 #All possible card ranks - only the first 3-4 are used in Leduc Hold'em and 
 # variants.

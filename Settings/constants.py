@@ -9,7 +9,7 @@ Created on Sun Aug 20 00:55:09 2017
 # Various constants used in DeepStack.
 
 # the number of players in the game
-players_count = 2
+#players_count = 2
 # the number of betting rounds in the game
 streets_count = 2
 
@@ -41,6 +41,7 @@ class node_types:
 class actions:
     fold = -2
     ccall = -1
+    rraise = -3
 
 # String representations for actions in the ACPC protocol
 # @field fold "`fold`"

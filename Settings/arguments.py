@@ -30,12 +30,14 @@ streets_count = 4
 # the tensor datatype used for storing DeepStack's internal data
 Tensor = torch.FloatTensor
 LongTensor = torch.LongTensor
+ByteTensor = torch.ByteTensor
+IntTensor = torch.IntTensor
 # the directory for data files
 data_directory = 'Data/'
 # the size of the game's ante, in chips
-ante = 50
+ante = 100
 # the size of each player's stack, in chips
-stack = 200
+stack = 1000
 # the number of iterations that DeepStack runs CFR for
 cfr_iters = 1000
 # the number of preliminary CFR iterations which DeepStack doesn't factor into the average strategy (included in cfr_iters)
