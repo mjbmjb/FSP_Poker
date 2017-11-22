@@ -37,7 +37,7 @@ data_directory = 'Data/'
 # the size of the game's ante, in chips
 ante = 100
 # the size of each player's stack, in chips
-stack = 1000
+stack = 20000
 # the number of iterations that DeepStack runs CFR for
 cfr_iters = 1000
 # the number of preliminary CFR iterations which DeepStack doesn't factor into the average strategy (included in cfr_iters)
@@ -60,7 +60,7 @@ loss = nn.MSELoss()
 # how often to save the model during training
 save_epoch = 5000
 # how many epochs to train for
-epoch_count = 200000
+epoch_count = 1000
 # how many solved poker situations are generated for use as training examples
 train_data_count = 100
 # how many solved poker situations are generated for use as validation examples
@@ -87,5 +87,6 @@ assert(cfr_iters > cfr_skip_iters)
 if gpu:
   Tensor = torch.cuda.FloatTensor
   LongTensor = torch.cuda.LongTensor
-
+  ByteTensor = torch.cuda.ByteTensor
+  IntTensor = torch.cuda.LongTensor
 

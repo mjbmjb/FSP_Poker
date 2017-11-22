@@ -29,8 +29,8 @@ class GameState(object):
         self.current_player = 2
         self.atype = ""
         self.street = 0
-        self.board  = arguments.ByteTensor(game_settings.board_card_count)
-        self.hole = arguments.ByteTensor(game_settings.player_count,2)
+        self.board  = arguments.IntTensor(game_settings.board_card_count).fill_(-1)
+        self.hole = arguments.IntTensor(game_settings.player_count,2).fill_(-1)
         self.board_string = ""    
         self.used_card = arguments.ByteTensor(game_settings.card_count).fill_(0)
 
@@ -340,4 +340,4 @@ if __name__ == '__main__':
     state.do_action(call)
     state.do_action(fold)
 
-    ter = state.get_terminal_value()
+#    ter = state.get_terminal_value()

@@ -58,8 +58,6 @@ We'll also use the following from PyTorch:
 import math
 import random
 import numpy as np
-import matplotlib
-import matplotlib.pyplot as plt
 from collections import namedtuple
 from copy import deepcopy
 from PIL import Image
@@ -72,14 +70,6 @@ from torch.autograd import Variable
 
 import Settings.arguments as arguments
 
-
-
-# set up matplotlib
-is_ipython = 'inline' in matplotlib.get_backend()
-if is_ipython:
-    from IPython import display
-
-#plt.ion()
 
 # if gpu is to be used
 use_cuda = torch.cuda.is_available()
@@ -210,9 +200,9 @@ class DQN(nn.Module):
 
     def __init__(self):
         super(DQN, self).__init__()
-        self.fc1 = nn.Linear(27, 64)
+        self.fc1 = nn.Linear(136, 128)
         self.fc1.weight.data.normal_(0, 0.01)
-        self.fc2 = nn.Linear(64,128)
+        self.fc2 = nn.Linear(128,128)
         self.fc2.weight.data.normal_(0, 0.01)
 #        self.fc3 = nn.Linear(64,32)
 #        self.fc3.weight.data.normal_(0, 0.01)
@@ -284,7 +274,6 @@ class DQNOptim:
         self.episode_durations = []
         self.error_acc = []
     
-        self.plt = plt
         
         self.viz = None
         self.win = None

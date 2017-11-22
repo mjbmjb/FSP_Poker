@@ -22,7 +22,7 @@ card_count = suit_count * rank_count;
 board_card_count = 5;
 board_card_num = [0,3,1,1]
 # the number of players in the game 
-player_count = 3
+player_count = 6
 # mjb the num of raises
 raises_count = 4
 # mjb the num of actions

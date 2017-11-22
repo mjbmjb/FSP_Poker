@@ -35,8 +35,8 @@ class SLNet(nn.Module):
     def __init__(self):
         super(SLNet, self).__init__()
         
-        self.fc1 = nn.Linear(27,64)
-        self.fc2 = nn.Linear(64,64)
+        self.fc1 = nn.Linear(136,128)
+        self.fc2 = nn.Linear(128,64)
         self.output = nn.Linear(64,4)
         self.softmax = nn.Softmax()
         
