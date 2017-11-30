@@ -42,10 +42,13 @@ class MsgToState:
         for each_round_action in self.betting_action:
             for action in each_round_action:
                 self.action_list.append(self._parse_action(action))
-
+            
+        # first set training flag to false
+        self.state.train = False
         # update [hole] and [board]
         self.state.hole = self.message_parser.get_hole_card(position=None)
         self.state.board = self.message_parser.get_board_card(rd=None)
+        
         
         # after setting up basic data structure, start to do each action and update data structure
         cnt = 0

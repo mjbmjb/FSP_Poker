@@ -18,6 +18,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 from torch.autograd import Variable
+from torch.distributions import Categorical
+from torch.nn.init import normal, calculate_gain, kaiming_normal
 
 import Settings.arguments as arguments
 import Settings.game_settings as game_settings
@@ -29,26 +31,35 @@ LongTensor = torch.cuda.LongTensor if use_cuda else torch.LongTensor
 ByteTensor = torch.cuda.ByteTensor if use_cuda else torch.ByteTensor
 Tensor = FloatTensor
 
+def weights_init(m):
+    if isinstance(m, nn.Linear):
+        normal(m.weight.data)
+        normal(m.bias.data)
 
 
 class SLNet(nn.Module):
     def __init__(self):
         super(SLNet, self).__init__()
-        
-        self.fc1 = nn.Linear(136,128)
-        self.fc2 = nn.Linear(128,64)
-        self.output = nn.Linear(64,4)
-        self.softmax = nn.Softmax()
+        self.fc1 = nn.Linear(274,256)
+        self.fc1_bn = nn.BatchNorm1d(256)
+        self.fc2 = nn.Linear(256,128)
+        self.fc2_bn = nn.BatchNorm1d(128)
+        self.fc3 = nn.Linear(128,64)
+        self.fc3_bn = nn.BatchNorm1d(64)
+        self.output = nn.Linear(64,7)
+        self.logsoftmax = nn.LogSoftmax()
         
     def forward(self, x):
         x = self.fc1(x)
-        x = F.relu(x)
+        x = F.relu(self.fc1_bn(x))
         x = self.fc2(x)
-        x = F.relu(x)
+        x = F.relu(self.fc2_bn(x))
+        x = self.fc3(x)
+        x = F.relu(self.fc3_bn(x))
         output = self.output(x)
-        output = self.softmax(output)
+        output = self.logsoftmax(output)
         return output
-
+    
 Transition = namedtuple('Transition',
                         ('state', 'policy'))
 
@@ -101,25 +112,24 @@ class SLOptim:
     
     def __init__(self):
         
-        self.BATCH_SIZE = 256
-        self.GAMMA = 0.999
-        self.EPS_START = 0.9
-        self.EPS_END = 0.00
-        self.EPS_DECAY = 50
+        self.BATCH_SIZE = 128
         
         self.model = SLNet()
+        
+        # init weight and baise
+        self.model.apply(weights_init)
         
         if use_cuda:
             self.model.cuda()
             
         if arguments.muilt_gpu:
             self.model = nn.DataParallel(self.model)
-
             
+        
             
-        self.optimizer = optim.ASGD(self.model.parameters(),lr=0.01)
-        self.memory = Memory(100000)
-        self.loss = nn.CrossEntropyLoss()
+        self.optimizer = optim.ASGD(self.model.parameters(),lr=0.0001)
+        self.memory = Memory(10000)
+        self.loss = nn.NLLLoss()
         
         
         self.steps_done = 0
@@ -131,13 +141,17 @@ class SLOptim:
         self.win = None
         self.current_sum = 0.1
     
-    # @return action LongTensor[[]]
+    
+    # @return action LongTensor(1,1)
     def select_action(self, state):
+        self.model.eval() # to use the batchNorm correctly
         policy = self.model(Variable(state)).data
-        action = arguments.LongTensor([np.random.choice(np.arange(game_settings.actions_count),\
-                                                         1,\
-                                                         replace=False,\
-                                                         p=policy.cpu().numpy()[0]).tolist()])
+        #convert log(softmax) to softmax
+        policy = torch.exp(policy)
+#        assert((policy >= 0).sum() == 7)
+        m = Categorical(policy)
+        action = arguments.LongTensor(1,1)
+        action[0] = m.sample()
         return action
     
     
@@ -165,6 +179,8 @@ class SLOptim:
     
 #    @profile
     def optimize_model(self):
+        self.model.train()# to use the batchNorm correctly
+        
         self.steps_done += 1
         global last_sync
         if len(self.memory) < self.BATCH_SIZE:

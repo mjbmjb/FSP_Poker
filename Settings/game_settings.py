@@ -26,6 +26,6 @@ player_count = 6
 # mjb the num of raises
 raises_count = 4
 # mjb the num of actions
-actions_count = 4
+actions_count = 7
 # mjb private
 private_count = 1

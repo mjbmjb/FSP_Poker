@@ -19,7 +19,7 @@ from collections import namedtuple
 Action = namedtuple('Ation', ['atype', 'amount'])
 
 from ctypes import cdll, c_int
-dll = cdll.LoadLibrary("../DLL/handstrength.so")
+dll = cdll.LoadLibrary(arguments.WORK_PATH + "/DLL/handstrength.so")
 
 
 class GameState(object):
@@ -60,6 +60,10 @@ class GameState(object):
         self.card_stack = [i for i in range(52)]
         random.shuffle(self.card_stack)
         self._deal_hole()
+        
+        self.next = GameState
+        self.prev = GameState
+        self.train = True
     
     def do_action(self, action):
         # [1.0] do action, update player [bets] and [active]
@@ -176,8 +180,9 @@ class GameState(object):
 
                 self.current_player = next_player
                 
-                # deal board cards
-                self._deal_board()
+                # if the board hasn't set(when using in player) deal board cards
+                if self.train:
+                    self._deal_board(self.street)
 
         else:
 
@@ -298,9 +303,10 @@ class GameState(object):
             for j in range(2):
                 self.hole[i][j] = self.card_stack.pop()
     
-    def _deal_board(self):
-        board_num = sum(game_settings.board_card_num[:self.street+1])
-        pre_board_num = board_num - game_settings.board_card_num[self.street]
+    # deal card by street
+    def _deal_board(self, street):
+        board_num = sum(game_settings.board_card_num[:street+1])
+        pre_board_num = board_num - game_settings.board_card_num[street]
         for i in range(pre_board_num, board_num):
             self.board[i] = self.card_stack.pop()
         
@@ -318,6 +324,8 @@ class GameState(object):
         if sp_num == 1:
             terminal_value[self.bets.tolist().index(max_bet)] = sum_bet
         elif sp_num > 1:
+            for street in range(self.street, constants.streets_count):
+                self._deal_board(street)
             winner = self._get_showdown_winner(show_player)
             terminal_value[winner] = self.bets.sum() / winner.sum()
         else:
@@ -330,6 +338,7 @@ if __name__ == '__main__':
     state = GameState()
     call = Action(atype=constants.actions.ccall,amount=0)
     rrasie = Action(atype=constants.actions.rraise,amount=1000)
+    rrasie1 = Action(atype=constants.actions.rraise,amount=2000)
     fold = Action(atype=constants.actions.fold,amount=0)
     
 
@@ -338,6 +347,18 @@ if __name__ == '__main__':
     state.do_action(call)
     state.do_action(rrasie)
     state.do_action(call)
+    state.do_action(fold)
+    print(state.street)
+    print(state.board)
+    for i in range(5):
+        state.do_action(call)
+    state.do_action(rrasie)
+    print(state.street)
+    print(state.board)
+    for i in range(5):
+        state.do_action(call)
+    print(state.street)
+    print(state.board)
     state.do_action(fold)
 
 #    ter = state.get_terminal_value()

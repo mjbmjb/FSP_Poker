@@ -22,8 +22,10 @@ import random
 import copy
 from collections import namedtuple
 
+#Transition = namedtuple('Transition',
+#                        ('state', 'action', 'next_state', 'reward'))
 Transition = namedtuple('Transition',
-                        ('state', 'action', 'next_state', 'reward'))
+                        ('state', 'action', 'reward'))
 
 class SimEnv:
 
@@ -47,18 +49,21 @@ class SimEnv:
         # if action is invaild
         if action >= len(vaild_action):
             action = len(vaild_action) - 1
-        
+#            print(action)
         action_tuple = vaild_action[action] 
         
         # copy the current state, may be slow
         next_state = copy.deepcopy(state)
+        state.next = next_state
+        next_state.prev = state
  
         next_state.do_action(action_tuple)
         
         reward = arguments.Tensor([current_bet - next_state.bets[current_player]])
         terminal = next_state.terminal
         
-        self.store_memory(current_player, state, action, next_state, reward)
+#        self.store_memory(current_player, state, action, next_state, reward)
+        self.store_memory(current_player, state, action, reward)
         # only for debug
 #        self.store_memory(current_player, state, action_tuple, next_state, reward)
         
@@ -67,14 +72,17 @@ class SimEnv:
             for record in self.memory:
                 if len(record) > 0:
                     record[-1].reward.add_(terminal_value[record[-1].state.current_player])
+            # fix the small and big bind
+            if len(self.memory[0]) > 0 and len(self.memory[1]) > 0:
+                self.memory[0][-1].reward.sub_(50)
+                self.memory[1][-1].reward.sub_(100)
             next_state = None
         
-        return next_state, terminal
+        return next_state, terminal, action
+    
     
     def store_memory(self, current_player, *args):
         self.memory[current_player].append(Transition(*args))
-        
-
 
    # return the list of the vaild action given the state of the current_player
     def get_vaild_action(self, state):
@@ -85,21 +93,33 @@ class SimEnv:
         # add call
         vaild_action.append(Action(atype=constants.actions.ccall,amount=0))
         # if the max bet is not the same as the stack size
+#        if state.bets.max() < arguments.stack:
+#            raise_bucket_len  = int((state.max_no_limit_raise_to - state.min_no_limit_raise_to) / arguments.bet_bucket)
+#            for i in range(arguments.bet_bucket):
+#                vaild_action.append(Action(atype=constants.actions.rraise,amount=state.min_no_limit_raise_to+raise_bucket_len*i))
+#            # if greater than stack, change it to stack
+#            if vaild_action[-1].amount > arguments.stack:
+#                vaild_action[-1] = Action(atype=constants.actions.rraise,amount=arguments.stack)
+
+        #  F C 1/4P 1/2P P A
         if state.bets.max() < arguments.stack:
-            raise_bucket_len  = int((state.max_no_limit_raise_to - state.min_no_limit_raise_to) / arguments.bet_bucket)
-            for i in range(arguments.bet_bucket):
-                vaild_action.append(Action(atype=constants.actions.rraise,amount=state.min_no_limit_raise_to+raise_bucket_len*i))
-            # if greater than stack, change it to stack
-            if vaild_action[-1].amount > arguments.stack:
-                vaild_action[-1] = Action(atype=constants.actions.rraise,amount=arguments.stack)
-                
+            pot_times = arguments.pot_times
+            pot_size = state.bets.sum()
+            
+            for times in pot_times:
+                raise_size = int(times * pot_size)
+                # greater than big bind and smaller than satck
+                if raise_size > 100 and raise_size < arguments.stack:
+                    vaild_action.append(Action(atype=constants.actions.rraise,amount=raise_size))
+
+            vaild_action.append(Action(atype=constants.actions.rraise,amount=arguments.stack))
         return vaild_action
     
     def _cards_to_tensor(self, cards):
         tensor = arguments.Tensor(game_settings.card_count).fill_(0)
     
         for i in range(cards.size(0)):
-            if cards[i] > 0:
+            if cards[i] >= 0:
                 tensor[int(cards[i])] = 1
         return tensor
     
@@ -108,18 +128,32 @@ class SimEnv:
         if (state == None):
           return None
     
-        # transform street [0,1] means the first street
-        street_tensor = arguments.Tensor(constants.streets_count).fill_(0)
-        street_tensor[int(state.street)] = 1
+        # transform street [0,1] means the first street # 4 /32 0-31
+        street_tensor = arguments.Tensor(constants.streets_count * 8).fill_(0) 
+        street_tensor[int(state.street)*8: int(state.street+1)*8] = 1
       
-        #position_tensor
-        position_tensor = arguments.Tensor(constants.streets_count).fill_(state.current_player)
+        #position_tensor # /48 32-80
+        position_tensor = arguments.Tensor(game_settings.player_count * 8).fill_(0)
+        position_tensor[state.current_player*8: (state.current_player+1)*8] = 1
       
-                    
-        # transform bets
+        # active tensor / 6 81-86
+        active_tensor = arguments.Tensor(game_settings.player_count)
+        active_tensor[state.active] = 1
+        
+        
+        # transform bets 60 87-146
         bet_tensor = arguments.Tensor(arguments.bet_bucket * game_settings.player_count).fill_(0)
         for i in range(game_settings.player_count):
-            bet_tensor[i*arguments.bet_bucket + int((state.bets[state.current_player]-1) / arguments.bet_bucket_len)] = 1
+            bet_tensor[i*arguments.bet_bucket + int((state.bets[i]-1) / arguments.bet_bucket_len)]= 1
+            
+        # ransform pot 60 87-146
+        pot_size = state.bets.sum()
+        pot_tensor = arguments.Tensor(len(arguments.pot_times) * game_settings.player_count).fill_(0)
+        for i in range(game_settings.player_count):
+            for j in range(len(arguments.pot_times)):
+                if state.bets[i] < arguments.pot_times[j] * pot_size:
+                    pot_tensor[i * len(arguments.pot_times) + j] = 1
+                    break
 
       
 #      print(node.bets)
@@ -127,8 +161,8 @@ class SimEnv:
 #      print(bet_oppo_tensor)
             
       
-      # transform hand(private and board)
-#      print(len(state.private))
+       # transform hand(private and board) 52
+#      print(len(state.private)) 52
         private_tensor = self._cards_to_tensor(state.hole[state.current_player])
         board_tensor = self._cards_to_tensor(state.board)
       
@@ -136,8 +170,8 @@ class SimEnv:
 
       
         # street: 1-2 position 3 bets 4-5 private 
-        return_tensor = torch.unsqueeze(torch.cat((street_tensor, position_tensor,
-                                         bet_tensor, private_tensor, board_tensor,) , 0), 0)
+        return_tensor = torch.unsqueeze(torch.cat((street_tensor, position_tensor, active_tensor,
+                                         bet_tensor, pot_tensor, private_tensor, board_tensor,) , 0), 0)
         
         return return_tensor
         
@@ -163,7 +197,8 @@ if __name__ == '__main__':
     
     while not terminal:
         action_list = env.get_vaild_action(state)
-        next_state, terminal = env.step(state,1)
+        print(action_list)
+        next_state, terminal, action= env.step(state,1)
         state = next_state
         
  

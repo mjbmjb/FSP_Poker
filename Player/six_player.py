@@ -38,4 +38,5 @@ while True:
     acpc_game.play_action(adviced_action)
     
     if adviced_action.atype != -1 and adviced_action.atype != -2:
+        print("Raise Action: " + str(adviced_action))
         raction.append(adviced_action)

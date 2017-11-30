@@ -31,19 +31,23 @@ num_episodes = 10
 env = SimEnv()
 
 Agent = namedtuple('Agent',['rl','sl','ID'])
+Reward = [0] * game_settings.player_count
 
 Agents = []
 for i in range(game_settings.player_count):
     Agents.append(Agent(rl=DQNOptim(),sl=SLOptim(),ID=i))
 
 
-def load_model(dqn_optim, iter_time):
+def load_model(iter_time):
     iter_str = str(iter_time)
 #    # load rl model (only the net)
-#    dqn_optim.model.load_state_dict(torch.load('../Data/Model/Iter:' + iter_str + '.rl'))
-#    # load sl model
-#    table_sl.strategy = torch.load('../Data/Model/Iter:' + iter_str + '.sl')
-#
+    for i in range(game_settings.player_count):
+        Agents[i].rl.model.load_state_dict(torch.load('../Data/Model/Iter:' + iter_str + '_' + str(i) +'_' + '.rl'))
+        Agents[i].rl.target_net.load_state_dict(Agents[i].rl.model.state_dict())
+        
+        Agents[i].sl.model.load_state_dict(torch.load('../Data/Model/Iter:' + iter_str + '_' + str(i) +'_' + '.sl'))
+        
+
 def save_model(episod):
     path = '../Data/Model/'
     sl_name = path + "Iter:" + str(episod)
@@ -57,8 +61,8 @@ def save_model(episod):
         # save rl strategy
         # 1.0 save the prarmeter
         torch.save(agent.rl.model.state_dict(), rl_name + '_'+str(agent.ID)+'_' + '.rl')
-        # 2.0 save the memory of DQN
-        np.save(memory_name + '_'+str(agent.ID)+'_' + '.memory', np.array(agent.rl.memory.memory))
+        # 2.0 save the memory of sl
+#        np.save(memory_name + '_'+str(agent.ID)+'_' + '.memory', np.array(agent.sl.memory.memory))
 
 def save_table_csv(table):
     with open('../Data/table.csv', 'a') as fout:
@@ -75,18 +79,36 @@ def get_action(state, current_player ,flag):
     action = table_sl.select_action(state) if flag == 0 else agents[current_player].rl.select_action(state)
     return action
 
+street_list = []
 def store_memory(env, agents):
     # store the memory
     for record_list in env.memory:
-        for record in record_list:                   
-            state, action, next_state, reward = record
+        for i in range(len(record_list)):                   
+            state, action, reward = record_list[i]
+            # the next state is the state when agents action next time
+            if i+1 >= len(record_list):
+                next_state = None
+            else:
+                next_state,_,_ = record_list[i+1]
+#            if reward[0] > 0:
+#                print(reward[0])
             # convert to tensor
+            street_list.append(state.street)
             state_tensor = env.state2tensor(state)
-            next_state_tensor = env.state2tensor(next_state)
             action_tensor = arguments.LongTensor([[action]])
-            reward.div_(arguments.stack)
-            assert(type(action) == type(1))
+            next_state_tensor = env.state2tensor(next_state)
+            reward.div_(arguments.stack*game_settings.player_count)
+            
             agents[state.current_player].rl.memory.push(state_tensor, action_tensor, next_state_tensor, reward)
+            
+def record_reward(agents, env, rewards):
+    iter_count = 0
+    for record_list in env.memory:
+        state, _, _, reward = record_list[-1]
+        rewards[agents[state.current_player].ID]  = rewards[agents[state.current_player].ID] + reward
+        iter_count = iter_count + 1
+    assert(iter_count == game_settings.player_count)
+    
 
 ######################################################################
 #
@@ -107,37 +129,47 @@ def main():
     table_update_num = 0
     
     if arguments.load_model:
-        load_model(dqn_optim, arguments.load_model_num)
+        load_model(arguments.load_model_num)
     
     for i_episode in range(arguments.epoch_count + 1):
+        random.shuffle(Agents)
         
         # Initialize the environment and state
         env.reset()
         state = GameState()
+        
+#        import nn.Test.test_env as test
+#        test.test_five_card(state)
+        
         for t in count():
             state_tensor = env.state2tensor(state)
             current_player = state.current_player
             # Select and perform an action
 #            print(state_tensor.size(1))
-            assert(state_tensor.size(1) == 136)
+            assert(state_tensor.size(1) == 274)
             
             flag = 0 if random.random() > arguments.eta else 1
             if flag == 0:
                 # sl
                 action = Agents[current_player].sl.select_action(state_tensor)
+#                print("SL Action:"+str(action[0][0]))
             elif flag == 1:
                 #rl
                 action = Agents[current_player].rl.select_action(state_tensor)
+#                print("RL Action:"+str(action[0][0]))
             else:
                 assert(False)
                 
-            next_state, done = env.step(state, action[0][0])
+            next_state, done, action_taken = env.step(state, action[0][0])
+            action[0][0] = action_taken 
             
             if flag == 1:
                 # if choose sl store tuple(s,a) in supervised learning memory Msl
                 state_tensor = env.state2tensor(state)
                 action_tensor = action[0]
-                Agents[current_player].sl.memory.push(state_tensor, action_tensor)
+                if len(Agents[current_player].rl.memory.memory) > Agents[current_player].rl.memory.capacity:
+                    Agents[current_player].sl.memory.push(state_tensor, action_tensor)
+#                print('Action:' + str(action[0][0]))
 
             
             if done:
@@ -145,13 +177,18 @@ def main():
                 for agent in Agents:
                     if agent.rl.steps_done > 0 and agent.rl.steps_done % 300 == 0:
                         agent.rl.target_net.load_state_dict(agent.rl.model.state_dict())
-                    if len(agent.rl.memory.memory) > agent.rl.memory.capacity / 10 or True:
+                    if len(agent.rl.memory.memory) > agent.rl.memory.capacity and i_episode % 20 == 0:
                         agent.rl.optimize_model()
+                    if len(agent.sl.memory.memory) > agent.sl.memory.capacity and i_episode % 20 == 0:
                         agent.sl.optimize_model()
-#                    agent.rl.plot_error_vis(i_episode)
                     if i_episode % 100 == 0:
+#                        agent.rl.plot_error_vis(i_episode)
                         print("rl")
                         print(len(agent.rl.memory))
+                        print("sl")
+                        print(len(agent.sl.memory))
+                    # record the award
+#                    record_reward(Agents, env, Reward)
                 break
             
 

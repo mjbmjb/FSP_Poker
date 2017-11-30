@@ -5,22 +5,34 @@ Created on Tue Aug 22 01:30:35 2017
 
 @author: mjb
 """
-
+import torch
 
 import Settings.game_settings as game_settings
-import Game.card_to_string as card_to_string
 import Settings.arguments as arguments
-from Tree.tree_builder import PokerTreeBuilder
-from Tree.tree_visualiser import TreeVisualiser
 import Settings.constants as constants
-from nn.state import GameState
+from Tree.game_state import GameState
+from Tree.game_state import Action
 
-from nn.env import Env
-
-builder = PokerTreeBuilder()
-env = Env()
-env.reset()
-
-tensor = builder.statenode_to_tensor(env.state)
-
-print(tensor.size(0))
+def test_five_card(state):
+    call = Action(atype=constants.actions.ccall,amount=0)
+    rrasie = Action(atype=constants.actions.rraise,amount=20000)
+    fold = Action(atype=constants.actions.fold,amount=0)
+    
+    hole = torch.LongTensor([[40,41],[50,51],[4,5],[8,9],[44,45],[48,49]])
+    #board = torch.LongTensor([6,30,31,38,43])
+    board = torch.LongTensor([6,30,31,39,43])
+    
+    state.bets = arguments.LongTensor([10000,10000,10000,10000,10000,10000])
+    state.street = 3
+    state.current_player = 0
+    
+    state.hole = hole
+    state.board = board
+    
+    state.do_action(rrasie)
+    state.do_action(fold)
+    state.do_action(fold)
+    state.do_action(fold)
+    state.do_action(call)
+    #state.do_action(call)
+    state.street = 3
