@@ -127,8 +127,8 @@ class SLOptim:
             
         
             
-        self.optimizer = optim.ASGD(self.model.parameters(),lr=0.0001)
-        self.memory = Memory(10000)
+        self.optimizer = optim.RMSprop(self.model.parameters(),lr=0.0001)
+        self.memory = Memory(100000)
         self.loss = nn.NLLLoss()
         
         
@@ -192,7 +192,7 @@ class SLOptim:
     
 
         state_batch = Variable(torch.cat(batch.state), volatile=False)
-        excepted_policy_batch = Variable(torch.cat(batch.policy), volatile=False)
+        excepted_policy_batch = Variable(torch.cat(batch.policy), volatile=True)
     
         policy_batch = self.model(state_batch)
         

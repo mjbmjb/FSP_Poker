@@ -41,16 +41,18 @@ class SimEnv:
     # state: GameState action: int 
     #@return next_node, terminal
     def step(self, state, action):
+        pot_size = state.bets.sum()
         current_player = state.current_player
         current_bet = state.bets[current_player]
         
         vaild_action = self.get_vaild_action(state)
         
+        action_taken = action
         # if action is invaild
-        if action >= len(vaild_action):
-            action = len(vaild_action) - 1
+        if action_taken >= len(vaild_action):
+            action_taken = len(vaild_action) - 1
 #            print(action)
-        action_tuple = vaild_action[action] 
+        action_tuple = vaild_action[action_taken] 
         
         # copy the current state, may be slow
         next_state = copy.deepcopy(state)
@@ -62,8 +64,10 @@ class SimEnv:
         reward = arguments.Tensor([current_bet - next_state.bets[current_player]])
         terminal = next_state.terminal
         
+        # !!!!! here we store action not action_taken
 #        self.store_memory(current_player, state, action, next_state, reward)
         self.store_memory(current_player, state, action, reward)
+#        assert(reward[0] < 10 and reward[0] > -10)
         # only for debug
 #        self.store_memory(current_player, state, action_tuple, next_state, reward)
         
@@ -71,14 +75,18 @@ class SimEnv:
             terminal_value = next_state.get_terminal_value()
             for record in self.memory:
                 if len(record) > 0:
-                    record[-1].reward.add_(terminal_value[record[-1].state.current_player])
+                    record_player = record[-1].state.current_player
+                    record[-1].reward.add_(terminal_value[record_player])
+                    
             # fix the small and big bind
             if len(self.memory[0]) > 0 and len(self.memory[1]) > 0:
-                self.memory[0][-1].reward.sub_(50)
-                self.memory[1][-1].reward.sub_(100)
+#                self.memory[0][-1].reward.sub_(50)
+#                self.memory[1][-1].reward.sub_(100)
+                self.memory[0][-1].reward.sub_(0.3)
+                self.memory[1][-1].reward.sub_(0.6)
             next_state = None
         
-        return next_state, terminal, action
+        return next_state, terminal, action_taken
     
     
     def store_memory(self, current_player, *args):
@@ -108,11 +116,12 @@ class SimEnv:
             
             for times in pot_times:
                 raise_size = int(times * pot_size)
+                if raise_size < state.min_no_limit_raise_to: continue
                 # greater than big bind and smaller than satck
                 if raise_size > 100 and raise_size < arguments.stack:
                     vaild_action.append(Action(atype=constants.actions.rraise,amount=raise_size))
-
-            vaild_action.append(Action(atype=constants.actions.rraise,amount=arguments.stack))
+            # all in 
+#            vaild_action.append(Action(atype=constants.actions.rraise,amount=arguments.stack))
         return vaild_action
     
     def _cards_to_tensor(self, cards):

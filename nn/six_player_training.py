@@ -76,7 +76,7 @@ def save_table_csv(table):
 
 def get_action(state, current_player ,flag):
     # flag = 0 sl flag = 1 rl
-    action = table_sl.select_action(state) if flag == 0 else agents[current_player].rl.select_action(state)
+    action = table_sl.select_action(state) if flag == 0 else Agent.rl.select_action(state)
     return action
 
 street_list = []
@@ -85,6 +85,9 @@ def store_memory(env, agents):
     for record_list in env.memory:
         for i in range(len(record_list)):                   
             state, action, reward = record_list[i]
+#            if reward[0] > 10 or reward[0] < -10:
+#                assert(False)
+#                print(reward[0])
             # the next state is the state when agents action next time
             if i+1 >= len(record_list):
                 next_state = None
@@ -99,7 +102,8 @@ def store_memory(env, agents):
             next_state_tensor = env.state2tensor(next_state)
             reward.div_(arguments.stack*game_settings.player_count)
             
-            agents[state.current_player].rl.memory.push(state_tensor, action_tensor, next_state_tensor, reward)
+#            agents[state.current_player].rl.memory.push(state_tensor, action_tensor, next_state_tensor, reward)
+            agents.rl.memory.push(state_tensor, action_tensor, next_state_tensor, reward)
             
 def record_reward(agents, env, rewards):
     iter_count = 0
@@ -130,9 +134,10 @@ def main():
     
     if arguments.load_model:
         load_model(arguments.load_model_num)
+    Agent = Agents[0]
     
     for i_episode in range(arguments.epoch_count + 1):
-        random.shuffle(Agents)
+#        random.shuffle(Agents)
         
         # Initialize the environment and state
         env.reset()
@@ -151,11 +156,13 @@ def main():
             flag = 0 if random.random() > arguments.eta else 1
             if flag == 0:
                 # sl
-                action = Agents[current_player].sl.select_action(state_tensor)
+#                action = Agents[current_player].sl.select_action(state_tensor)
+                action = Agents[0].sl.select_action(state_tensor)
 #                print("SL Action:"+str(action[0][0]))
             elif flag == 1:
                 #rl
-                action = Agents[current_player].rl.select_action(state_tensor)
+#                action = Agents[current_player].rl.select_action(state_tensor)
+                action = Agents[0].rl.select_action(state_tensor)
 #                print("RL Action:"+str(action[0][0]))
             else:
                 assert(False)
@@ -167,26 +174,26 @@ def main():
                 # if choose sl store tuple(s,a) in supervised learning memory Msl
                 state_tensor = env.state2tensor(state)
                 action_tensor = action[0]
-                if len(Agents[current_player].rl.memory.memory) > Agents[current_player].rl.memory.capacity:
-                    Agents[current_player].sl.memory.push(state_tensor, action_tensor)
+                if Agent.rl.steps_done > Agent.rl.EPS_DECAY * 3:
+                    Agent.sl.memory.push(state_tensor, action_tensor)
 #                print('Action:' + str(action[0][0]))
 
             
             if done:
-                store_memory(env, Agents)
-                for agent in Agents:
-                    if agent.rl.steps_done > 0 and agent.rl.steps_done % 300 == 0:
-                        agent.rl.target_net.load_state_dict(agent.rl.model.state_dict())
-                    if len(agent.rl.memory.memory) > agent.rl.memory.capacity and i_episode % 20 == 0:
-                        agent.rl.optimize_model()
-                    if len(agent.sl.memory.memory) > agent.sl.memory.capacity and i_episode % 20 == 0:
-                        agent.sl.optimize_model()
-                    if i_episode % 100 == 0:
-#                        agent.rl.plot_error_vis(i_episode)
-                        print("rl")
-                        print(len(agent.rl.memory))
-                        print("sl")
-                        print(len(agent.sl.memory))
+                store_memory(env, Agent)
+#                for agent in Agents:
+                if Agent.rl.steps_done > 0 and Agent.rl.steps_done % 300 == 0:
+                    Agent.rl.target_net.load_state_dict(Agent.rl.model.state_dict())
+                if len(Agent.rl.memory.memory) >= Agent.rl.memory.capacity and i_episode % 2 == 0 or True: 
+                    Agent.rl.optimize_model()
+                if len(Agent.sl.memory.memory) >= Agent.sl.memory.capacity and i_episode % 2 == 0:
+                    Agent.sl.optimize_model()
+                if i_episode % 100 == 0:
+#                   Agent.rl.plot_error_vis(i_episode)
+                    print("rl")
+                    print(len(Agent.rl.memory))
+                    print("sl")
+                    print(len(Agent.sl.memory))
                     # record the award
 #                    record_reward(Agents, env, Reward)
                 break

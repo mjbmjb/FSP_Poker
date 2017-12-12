@@ -276,7 +276,7 @@ class DQNOptim:
             
             
         self.optimizer = optim.RMSprop(self.model.parameters(),lr=0.0001)
-        self.memory = ReplayMemory(10000)
+        self.memory = ReplayMemory(100000)
         
         
         self.steps_done = 0
