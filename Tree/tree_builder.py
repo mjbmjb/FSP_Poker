@@ -6,6 +6,7 @@ Created on Tue Aug 22 01:30:35 2017
 @author: mjb
 """
 
+
 # Builds a public tree for Leduc Hold'em or variants.
 # 
 # Each node of the tree contains the following fields:
@@ -39,6 +40,8 @@ import Settings.constants as constants
 from Game.bet_sizing import BetSizing
 
 
+
+
 class Node:
     def __init__(self):
         self.current_player = -2
@@ -46,8 +49,8 @@ class Node:
         self.street = -1
         self.board  = ""
         self.board_string = ""
-        self.bets = arguments.Tensor(2)
-        self.pot = 0
+        self.bets = arguments.Tensor(game_settings.player_count)
+        
         self.parent = Node
         self.children = []
         self.terminal = False
@@ -55,6 +58,17 @@ class Node:
         self.bet_sizing = []       
         self.node_id = 0
         self.strategy = arguments.Tensor([])
+        
+        self.spent = torch.ByteTensor([100,50,0,0,0,0])
+        self.active = torch.ByteTensor(game_settings.player_count).fill_(1)
+        self.fold = torch.ByteTensor(game_settings.player_count).fill_(0)
+        self.allin = torch.ByteTensor(game_settings.player_count).fill_(0)
+        self.action_taken = torch.ByteTensor(game_settings.player_count).fill_(0)
+        self.pot = 150
+        self.action_string = ''
+        
+        self.min_no_limit_raise_to = 2 * 100
+        self.max_no_limit_raise_to = arguments.stack
         
         self.table = arguments.Tensor([])
         self.rl = arguments.Tensor([])
@@ -64,6 +78,20 @@ class PokerTreeBuilder:
     # Constructor
     def __init__(self):
         self.node_id_acc = 0
+        
+    # find the next active player
+    # the self.current_player and self.active must be setted correctly(at least 2 active player)
+    def _get_next_active_player(self, node, current_player):
+        active_num = node.active.sum()
+        assert(active_num >= 1)
+        if active_num == 1:
+            return -3
+        i = current_player
+        while True:
+            i = (i + 1) % game_settings.player_count
+            if node.active[i]:
+                return i
+                
     
     
     # Creates the child node after a call which transitions between betting 
@@ -93,6 +121,9 @@ class PokerTreeBuilder:
     def _get_children_nodes_chance_node(self, parent_node):
       assert(parent_node.current_player == constants.players.chance)
       
+      index = torch.ByteTensor([i for i in range(game_settings.player_count)])
+      chance_first_player = index[parent_node.active].min()
+      
       if self.limit_to_street:
         return []
     
@@ -113,11 +144,14 @@ class PokerTreeBuilder:
         child.node_id = self.node_id_acc
         child.type = constants.node_types.inner_node
         child.parent = parent_node
-        child.current_player = constants.players.P1
+        child.current_player = chance_first_player
         child.street = parent_node.street + 1
         child.board = next_board
         child.board_string = next_board_string
         child.bets = parent_node.bets.clone()
+        
+        child.action_string = parent_node.action_string
+        child.active = parent_node.active.clone()
     
         children.append(child)
     
@@ -129,6 +163,7 @@ class PokerTreeBuilder:
     # @local
     def _fill_additional_attributes(self, node):
       node.pot = node.bets.min()
+      
     
     # Creates the children nodes after a player node.
     # @param parent_node the chance node
@@ -136,42 +171,74 @@ class PokerTreeBuilder:
     # @local
     def _get_children_player_node(self, parent_node):
       assert(parent_node.current_player != constants.players.chance)
+      # all 1 but current_player position is 0
+      current_player_mask = torch.ByteTensor(game_settings.player_count).fill_(1)
+      current_player_mask[parent_node.current_player] = 0
     
       children = []
       
-      #1.0 fold action
-      fold_node = Node()
-      self.node_id_acc = self.node_id_acc + 1
+      if parent_node.bets[parent_node.current_player] < parent_node.bets.max():
+          #1.0 fold action
+          fold_node = Node()
+          self.node_id_acc = self.node_id_acc + 1
+          
+          fold_node.node_id = self.node_id_acc
+          fold_node.street = parent_node.street 
+          fold_node.board = parent_node.board
+          fold_node.board_string = parent_node.board_string
+          fold_node.bets = parent_node.bets.clone()
+          fold_node.terminal = False
+          fold_node.active = parent_node.active.clone()
+          fold_node.fold = parent_node.fold.clone()
+          fold_node.action_taken = parent_node.action_taken.clone()
+          fold_node.action_string = parent_node.action_string + 'f'
+          fold_node.active[parent_node.current_player] = 0
+          fold_node.fold[parent_node.current_player] = 1
+          if parent_node.active.sum() ==  1 or fold_node.active.sum() == 1 and fold_node.bets[fold_node.active].sum() == fold_node.bets.max():
+              fold_node.terminal = True
+              fold_node.type = constants.node_types.terminal_fold
+          elif sum(parent_node.bets[parent_node.action_taken & parent_node.active] == parent_node.bets.max()) == parent_node.active.sum() - 1:
+              fold_node.type = constants.node_types.chance_node
+              fold_node.action_string = fold_node.action_string + '/'
+    #          fold_node.type = constants.node_types.fold
+          else:
+              fold_node.type = 1
+              
+          fold_node.current_player = self._get_next_active_player(parent_node, parent_node.current_player)
+          children.append(fold_node)
       
-      fold_node.node_id = self.node_id_acc
-      fold_node.type = constants.node_types.terminal_fold
-      fold_node.terminal = True
-      fold_node.current_player = 1 - parent_node.current_player
-      fold_node.street = parent_node.street 
-      fold_node.board = parent_node.board
-      fold_node.board_string = parent_node.board_string
-      fold_node.bets = parent_node.bets.clone()
-      children.append(fold_node)
+      # transition call in the last street or all the active player all in 
       
-      #2.0 check action
-      if parent_node.current_player == constants.players.P1 and (parent_node.bets[0] == parent_node.bets[1]):
-        check_node = Node()
+      if parent_node.active.sum() == 1 or \
+         parent_node.street == constants.streets_count and \
+         sum(parent_node.bets[current_player_mask & parent_node.action_taken]== parent_node.bets.max()) == parent_node.active.sum() - 1:
+      #2.0 terminal call - either last street or allin
+        terminal_call_node = Node()
         self.node_id_acc = self.node_id_acc + 1
         
-        check_node.node_id = self.node_id_acc
-        check_node.type = constants.node_types.check
-        check_node.terminal = False
-        check_node.current_player = 1 - parent_node.current_player
-        check_node.street = parent_node.street 
-        check_node.board = parent_node.board
-        check_node.board_string = parent_node.board_string
-        check_node.bets = parent_node.bets.clone()
-        children.append(check_node)
+        terminal_call_node.node_id = self.node_id_acc
+        terminal_call_node.type = constants.node_types.terminal_call
+        terminal_call_node.active[parent_node.current_player] = False
+        terminal_call_node.terminal = True
+        # mjb the game is over ,no matter who is the current player
+#        terminal_call_node.current_player = 1 - parent_node.current_player
+        terminal_call_node.street = parent_node.street 
+        terminal_call_node.board = parent_node.board
+        terminal_call_node.board_string = parent_node.board_string
+        
+        terminal_call_node.bets = parent_node.bets.clone()
+        terminal_call_node.bets[parent_node.current_player] = parent_node.bets.max()
+        
+        children.append(terminal_call_node)
+        
+      #2.0 normal call action
+      
       #transition call
-      elif parent_node.street == 0 and ( (parent_node.current_player == constants.players.P2 and \
-                                            parent_node.bets[0] == parent_node.bets[1]) or \
-                                           (parent_node.bets[0] != parent_node.bets[1] and \
-                                            max(parent_node.bets) < arguments.stack) ):
+      #make sure all the player have call yet
+      elif parent_node.street < constants.streets_count and \
+         sum(parent_node.bets[current_player_mask & parent_node.action_taken] == parent_node.bets.max()) == parent_node.active.sum() - 1:
+#           parent_node.check_taken[parent_node.street] >= parent_node.active.sum() and \
+#           sum(parent_node.bets * current_player_mask == parent_node.bets.max()) == parent_node.active.sum():
         chance_node = Node()
         self.node_id_acc = self.node_id_acc + 1
         
@@ -181,28 +248,49 @@ class PokerTreeBuilder:
         chance_node.board = parent_node.board
         chance_node.board_string = parent_node.board_string
         chance_node.current_player = constants.players.chance  
-        chance_node.bets = parent_node.bets.clone().fill_(parent_node.bets.max())
+        
+        chance_node.bets = parent_node.bets.clone()
+        chance_node.bets[parent_node.current_player] = parent_node.bets.max()
+        
+        chance_node.active = parent_node.active.clone()
+        chance_node.fold = parent_node.fold.clone()
+        chance_node.action_string =  parent_node.action_string + 'c/'
+        
         children.append(chance_node)
-      else:
-      #2.0 terminal call - either last street or allin
-        terminal_call_node = Node()
+
+      elif sum(parent_node.bets[current_player_mask] == parent_node.bets.max()) < parent_node.active.sum():
+        check_node = Node()
         self.node_id_acc = self.node_id_acc + 1
         
-        terminal_call_node.node_id = self.node_id_acc
-        terminal_call_node.type = constants.node_types.terminal_call
-        terminal_call_node.terminal = True
-        terminal_call_node.current_player = 1 - parent_node.current_player
-        terminal_call_node.street = parent_node.street 
-        terminal_call_node.board = parent_node.board
-        terminal_call_node.board_string = parent_node.board_string
-        terminal_call_node.bets = parent_node.bets.clone().fill_(parent_node.bets.max())
-        children.append(terminal_call_node)
+        check_node.node_id = self.node_id_acc
+        check_node.type = constants.node_types.check
+        check_node.terminal = False
+        check_node.street = parent_node.street 
+        check_node.board = parent_node.board
+        check_node.board_string = parent_node.board_string
+        
+        check_node.bets = parent_node.bets.clone()
+        check_node.bets[parent_node.current_player] = parent_node.bets.max()
+        
+        check_node.active = parent_node.active.clone()
+        check_node.fold = parent_node.fold.clone()
+        check_node.action_taken = parent_node.action_taken.clone()
+        check_node.action_taken[parent_node.current_player] = 1
+        check_node.action_string =  parent_node.action_string + 'c'
+        
+        if check_node.bets[parent_node.current_player] == arguments.stack:
+              check_node.active[parent_node.current_player] = 0
+              
+        check_node.current_player = self._get_next_active_player(parent_node, parent_node.current_player)
+        children.append(check_node)
+      else:
+         assert(False)
     
       #3.0 bet actions    
       possible_bets = self.bet_sizing.get_possible_bets(parent_node)
       
       if possible_bets.dim() != 0:
-        assert(possible_bets.size(1) == 2)
+#        assert(possible_bets.size(1) == 2)
         
         for i in range(possible_bets.size(0)):
           child = Node()
@@ -210,11 +298,22 @@ class PokerTreeBuilder:
           
           child.node_id = self.node_id_acc
           child.parent = parent_node
-          child.current_player = 1 - parent_node.current_player
           child.street = parent_node.street 
           child.board = parent_node.board
           child.board_string = parent_node.board_string
-          child.bets = possible_bets[i]
+          child.bets = possible_bets[i].clone()
+          assert(child.bets.size(0) == game_settings.player_count)
+          
+          child.active = parent_node.active.clone()
+          child.fold = parent_node.fold.clone()
+          child.action_taken = parent_node.action_taken.clone()
+          child.action_string =  parent_node.action_string + 'r'
+          child.action_taken.fill_(0)
+          
+          if child.bets[parent_node.current_player] == arguments.stack:
+              child.active[parent_node.current_player] = 0
+          
+          child.current_player = self._get_next_active_player(parent_node, parent_node.current_player)
           children.append(child)
       
       return children
@@ -232,7 +331,6 @@ class PokerTreeBuilder:
       
       chance_node = parent_node.current_player == constants.players.chance
 
-      chance_node = parent_node.current_player != 0 and parent_node.current_player != 1
       #transition call -> create a chance node
       if  parent_node.terminal:
         return []
@@ -301,6 +399,7 @@ class PokerTreeBuilder:
       root.current_player = params['root_node']['current_player']
       root.board = params['root_node']['board'].clone()
       root.board_string = card_to_string.cards_to_string(root.board)
+      root.action_taken = params['root_node']['action_taken']
       
       params['bet_sizing'] = params['bet_sizing'] if 'bet_sizing' in params else BetSizing(arguments.Tensor(arguments.bet_sizing))
     
@@ -332,7 +431,7 @@ class PokerTreeBuilder:
       street_tensor[int(node.street)] = 1
       
       #position_tensor
-      position_tensor = arguments.Tensor(4).fill_(node.current_player)
+      position_tensor = arguments.Tensor(constants.streets_count).fill_(node.current_player)
       
                     
       # transform #detpth# and bets
@@ -375,8 +474,16 @@ class PokerTreeBuilder:
             return
         for child in tree_root.children:
             self.acc_node(child, acc_node, acc_list)
-         
-         
-         
-         
-         
+      
+def main():
+    node = Node()
+    builder = PokerTreeBuilder()
+    
+    node.active = [False] * game_settings.player_count
+    node.active[1] = True
+    node.active[4] = True
+    node.current_player = 7
+    print(builder._get_next_active_player(node))
+    
+if __name__ == '__main__':
+    main()

@@ -114,9 +114,9 @@ class card_tools:
             board_idx = 0 
             for card_1 in range(game_settings.card_count): 
                 for card_2 in range(card_1 + 1, game_settings.card_count): 
-                    board_idx = board_idx + 1
                     out[board_idx, 0] = card_1
                     out[board_idx, 1] = card_2
+                    board_idx = board_idx + 1
     
             assert(board_idx == boards_count)#, 'wrong boards count!')
             return out
@@ -129,7 +129,7 @@ class card_tools:
         if game_settings.board_card_count == 1:
             return game_settings.card_count
         elif game_settings.board_card_count == 2: 
-            return (game_settings.card_count * (game_settings.card_count - 1)) / 2
+            return int((game_settings.card_count * (game_settings.card_count - 1)) / 2)
         else:
             assert(False)#, 'unsupported board size' )
       

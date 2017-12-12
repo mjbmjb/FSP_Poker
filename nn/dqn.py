@@ -58,8 +58,6 @@ We'll also use the following from PyTorch:
 import math
 import random
 import numpy as np
-import matplotlib
-import matplotlib.pyplot as plt
 from collections import namedtuple
 from copy import deepcopy
 from PIL import Image
@@ -69,17 +67,11 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 from torch.autograd import Variable
+from torch.distributions import Categorical
 
 import Settings.arguments as arguments
-
-
-
-# set up matplotlib
-is_ipython = 'inline' in matplotlib.get_backend()
-if is_ipython:
-    from IPython import display
-
-#plt.ion()
+import Settings.game_settings as game_settings
+from torch.nn.init import normal, calculate_gain, kaiming_normal
 
 # if gpu is to be used
 use_cuda = torch.cuda.is_available()
@@ -110,6 +102,11 @@ Tensor = FloatTensor
 
 Transition = namedtuple('Transition',
                         ('state', 'action', 'next_state', 'reward'))
+
+def weights_init(m):
+    if isinstance(m, nn.Linear):
+        normal(m.weight.data)
+        normal(m.bias.data)
 
 
 class ReplayMemory(object):
@@ -210,23 +207,22 @@ class DQN(nn.Module):
 
     def __init__(self):
         super(DQN, self).__init__()
-        self.fc1 = nn.Linear(23, 64)
-        self.fc1.weight.data.normal_(0, 0.01)
-        self.fc2 = nn.Linear(64,128)
-        self.fc2.weight.data.normal_(0, 0.01)
-#        self.fc3 = nn.Linear(64,32)
-#        self.fc3.weight.data.normal_(0, 0.01)
-        self.out = nn.Linear(128, 4)
-        self.out.weight.data.normal_(0, 0.01)
+        self.fc1 = nn.Linear(274, 256)
+        self.fc1_bn = nn.BatchNorm1d(256)
+        self.fc2 = nn.Linear(256,128)
+        self.fc2_bn = nn.BatchNorm1d(128)
+        self.fc3 = nn.Linear(128,64)
+        self.fc3_bn = nn.BatchNorm1d(64)
+        self.out = nn.Linear(64, 7)
 
     def forward(self, x):
         x = self.fc1(x)
-        x = F.relu(x)
+        x = F.relu(self.fc1_bn(x))
         x = self.fc2(x)
-        x = F.relu(x)
-#        x = F.sigmoid(x)
-#        x = self.fc3(x)
-#        x = F.sigmoid(x)
+        x = F.relu(self.fc2_bn(x))
+        x = self.fc3(x)
+        x = F.relu(self.fc3_bn(x))
+        
         return self.out(x.view(x.size(0), -1))
 
 
@@ -258,14 +254,17 @@ class DQNOptim:
     
     def __init__(self):
         
-        self.BATCH_SIZE = 256
+        self.BATCH_SIZE = 16
         self.GAMMA = 0.999
         self.EPS_START = 0.9
-        self.EPS_END = 0.00
-        self.EPS_DECAY = 50
+        self.EPS_END = 0.05
+        self.EPS_DECAY = 2000
         
         self.model = DQN()
         self.target_net = DQN()
+        
+        # init weight and baise
+        self.model.apply(weights_init)
         
         if use_cuda:
             self.model.cuda()
@@ -276,7 +275,7 @@ class DQNOptim:
             self.target_net = nn.DataParallel(self.target_net)
             
             
-        self.optimizer = optim.ASGD(self.model.parameters(),lr=0.1)
+        self.optimizer = optim.RMSprop(self.model.parameters(),lr=0.0001)
         self.memory = ReplayMemory(100000)
         
         
@@ -284,14 +283,15 @@ class DQNOptim:
         self.episode_durations = []
         self.error_acc = []
     
-        self.plt = plt
         
         self.viz = None
         self.win = None
         self.current_sum = 0.1
+        
     
     # @return action LongTensor[[]]
     def select_action(self, state):
+        self.model.eval() # to use the batchNorm correctly
         sample = random.random()
         eps_threshold = self.EPS_END + (self.EPS_START - self.EPS_END) * \
             math.exp(-1. * self.steps_done / self.EPS_DECAY)
@@ -300,8 +300,10 @@ class DQNOptim:
             return self.model(
                 Variable(state)).data.max(1)[1].view(1, 1)
         else:
-            return LongTensor([[random.randrange(4)]])
-    
+            m = Categorical(arguments.dqn_init_policy)
+            action = arguments.LongTensor(1,1)
+            action[0] = m.sample()
+            return  action
     
     
     
@@ -361,6 +363,8 @@ class DQNOptim:
     
 #    @profile
     def optimize_model(self):
+        self.model.train()# to use the batchNorm correctly
+        
         self.steps_done += 1
         global last_sync
         if len(self.memory) < self.BATCH_SIZE:
