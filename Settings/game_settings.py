@@ -28,4 +28,4 @@ raises_count = 4
 # mjb the num of actions
 actions_count = 7
 # mjb private
-private_count = 1
+private_count = 2

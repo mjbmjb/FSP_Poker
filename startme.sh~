@@ -1,0 +1,1 @@
+python ./Player/six_player.py $1 $2 100

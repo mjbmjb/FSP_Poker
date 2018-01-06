@@ -15,9 +15,11 @@ import torch.nn.functional as F
 
 torch.set_default_tensor_type('torch.FloatTensor')
 
-WORK_PATH = '/home/mjb/Nutstore/deepStack'
+#WORK_PATH = '/home/mjb/Nutstore/deepStack'
+WORK_PATH = '../'
 # whether to run on GPU
 gpu = torch.cuda.is_available()
+cpu_store = True
 # list of pot-scaled bet sizes to use in tree
 # @field bet_sizing
 bet_sizing = [1]
@@ -26,7 +28,7 @@ acpc_server = "localhost"
 # server port running the ACPC dealer
 acpc_server_port = 500
 # the number of betting rounds in the game
-streets_count = 4
+#streets_count = 4
 # the tensor datatype used for storing DeepStack's internal data
 Tensor = torch.FloatTensor
 LongTensor = torch.LongTensor
@@ -50,9 +52,9 @@ loss = nn.MSELoss()
 dqn_init_policy = Tensor([0.01,0.94,0.01,0.01,0.01,0.01,0.01])
 
 # how often to save the model during training
-save_epoch = 5000
+save_epoch = 100
 # how many epochs to train for
-epoch_count = 5000
+epoch_count = 500
 # how many solved poker situations are generated for use as training examples
 train_data_count = 100
 # how many solved poker situations are generated for use as validation examples

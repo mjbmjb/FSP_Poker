@@ -7,7 +7,7 @@ Created on Sat Sep  2 05:15:26 2017
 """
 
 import sys
-sys.path.append('/home/mjb/Nutstore/deepStack/')
+sys.path.append('../')
 #import cProfilev
 
 import random

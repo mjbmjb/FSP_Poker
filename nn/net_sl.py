@@ -6,7 +6,7 @@ Created on Sat Sep 30 02:20:21 2017
 @author: mjb
 """
 import sys
-sys.path.append('/home/mjb/Nutstore/deepStack/')
+sys.path.append('../')
 
 import random
 from collections import namedtuple

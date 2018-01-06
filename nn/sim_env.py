@@ -6,7 +6,7 @@ Created on Fri Sep  1 06:52:02 2017
 @author: mjb
 """
 import sys
-sys.path.append('/home/mjb/Nutstore/deepStack/')
+sys.path.append('../')
 
 import torch
 import Settings.game_settings as game_settings
@@ -29,7 +29,9 @@ Transition = namedtuple('Transition',
 
 class SimEnv:
 
-    def __init__(self):
+    def __init__(self, distributed = False):
+        self.distributed = distributed
+        
         self.memory = [[] for i in range(game_settings.player_count)]
         
     def reset(self):
@@ -61,7 +63,10 @@ class SimEnv:
  
         next_state.do_action(action_tuple)
         
-        reward = arguments.Tensor([current_bet - next_state.bets[current_player]])
+       
+        reward = arguments.Tensor([current_bet - next_state.bets[current_player]]) if not self.distributed else arguments.Tensor([0])
+            
+        
         terminal = next_state.terminal
         
         # !!!!! here we store action not action_taken
@@ -76,14 +81,17 @@ class SimEnv:
             for record in self.memory:
                 if len(record) > 0:
                     record_player = record[-1].state.current_player
-                    record[-1].reward.add_(terminal_value[record_player])
+                    if self.distributed:
+                        record[-1].reward.add_(terminal_value[record_player] - next_state.bets[record_player])
+                    else:
+                        record[-1].reward.add_(terminal_value[record_player])
                     
             # fix the small and big bind
-            if len(self.memory[0]) > 0 and len(self.memory[1]) > 0:
-#                self.memory[0][-1].reward.sub_(50)
-#                self.memory[1][-1].reward.sub_(100)
-                self.memory[0][-1].reward.sub_(0.3)
-                self.memory[1][-1].reward.sub_(0.6)
+            if len(self.memory[0]) > 0 and len(self.memory[1]) > 0 and not self.distributed:
+                self.memory[0][-1].reward.sub_(50)
+                self.memory[1][-1].reward.sub_(100)
+#                self.memory[0][-1].reward.sub_(0.3)
+#                self.memory[1][-1].reward.sub_(0.6)
             next_state = None
         
         return next_state, terminal, action_taken

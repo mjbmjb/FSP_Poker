@@ -7,7 +7,7 @@ Created on Wed Aug 23 00:27:06 2017
 """
 
 import sys
-sys.path.append('/home/mjb/Nutstore/deepStack/')
+sys.path.append('../')
 
 import torch
 import Settings.game_settings as game_settings

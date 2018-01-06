@@ -10,7 +10,7 @@ Created on Sun Aug 20 20:44:52 2017
 # @module card_to_string_conversion
 
 import sys
-sys.path.append('/home/mjb/Nutstore/deepStack/')
+sys.path.append('../')
 import Settings.game_settings as game_settings
 import Settings.arguments as arguments
 

@@ -6,7 +6,7 @@ Created on Wed Nov 22 00:23:01 2017
 @author: mjb
 """
 import sys
-sys.path.append('/home/mjb/Nutstore/deepStack/')
+sys.path.append('../')
 
 
 import Settings.game_settings as game_settings

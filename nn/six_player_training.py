@@ -7,7 +7,12 @@ Created on Sat Sep  2 05:15:26 2017
 """
 
 import sys
-sys.path.append('/home/mjb/Nutstore/deepStack/')
+sys.path.append('../')
+#sys.path.append('/home/carc/mjb/deepStack/')
+
+import os
+os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+
 #import cProfilev
 
 import random
@@ -28,7 +33,7 @@ from Tree.game_state import GameState
 from collections import namedtuple
 
 num_episodes = 10
-env = SimEnv()
+env = SimEnv(True)
 
 Agent = namedtuple('Agent',['rl','sl','ID'])
 Reward = [0] * game_settings.player_count
@@ -56,13 +61,23 @@ def save_model(episod):
     
     for agent in Agents:
         # save sl strategy
-    #    torch.save(table_sl.strategy, sl_name)
-        torch.save(agent.sl.model.state_dict(), sl_name + '_'+str(agent.ID)+'_' + '.sl')
+    #    torch.save(table_sl.strategy, sl_name)  
+        if arguments.cpu_store:
+            sl_model = agent.sl.model.cpu().state_dict()
+            rl_model = agent.rl.model.cpu().state_dict()
+
+            
+    
+        torch.save(sl_model, sl_name + '_'+str(agent.ID)+'_' + '.sl')
         # save rl strategy
         # 1.0 save the prarmeter
-        torch.save(agent.rl.model.state_dict(), rl_name + '_'+str(agent.ID)+'_' + '.rl')
+        torch.save(rl_model, rl_name + '_'+str(agent.ID)+'_' + '.rl')
         # 2.0 save the memory of sl
 #        np.save(memory_name + '_'+str(agent.ID)+'_' + '.memory', np.array(agent.sl.memory.memory))
+
+        if arguments.gpu:
+            agent.sl.model.cuda()
+            agent.rl.model.cuda()
 
 def save_table_csv(table):
     with open('../Data/table.csv', 'a') as fout:
@@ -100,9 +115,10 @@ def store_memory(env, agents):
             state_tensor = env.state2tensor(state)
             action_tensor = arguments.LongTensor([[action]])
             next_state_tensor = env.state2tensor(next_state)
-            reward.div_(arguments.stack*game_settings.player_count)
+#            reward.div_(arguments.stack*game_settings.player_count)
             
 #            agents[state.current_player].rl.memory.push(state_tensor, action_tensor, next_state_tensor, reward)
+#            print(reward[0])
             agents.rl.memory.push(state_tensor, action_tensor, next_state_tensor, reward)
             
 def record_reward(agents, env, rewards):
@@ -184,18 +200,22 @@ def main():
 #                for agent in Agents:
                 if Agent.rl.steps_done > 0 and Agent.rl.steps_done % 300 == 0:
                     Agent.rl.target_net.load_state_dict(Agent.rl.model.state_dict())
-                if len(Agent.rl.memory.memory) >= Agent.rl.memory.capacity and i_episode % 2 == 0 or True: 
+                if len(Agent.rl.memory.memory) >= Agent.rl.memory.capacity and i_episode % 2 == 0: 
                     Agent.rl.optimize_model()
                 if len(Agent.sl.memory.memory) >= Agent.sl.memory.capacity and i_episode % 2 == 0:
                     Agent.sl.optimize_model()
                 if i_episode % 100 == 0:
-#                   Agent.rl.plot_error_vis(i_episode)
+#                    Agent.rl.plot_error_vis(i_episode)
+#                    Agent.sl.plot_error_vis(i_episode)
                     print("rl")
                     print(len(Agent.rl.memory))
                     print("sl")
                     print(len(Agent.sl.memory))
                     # record the award
 #                    record_reward(Agents, env, Reward)
+                if i_episode != 0 and i_episode % arguments.save_epoch == 0:
+                    save_model(i_episode)
+
                 break
             
 

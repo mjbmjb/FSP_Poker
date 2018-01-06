@@ -7,7 +7,7 @@ Created on Wed Nov 22 00:08:38 2017
 """
 
 import sys
-sys.path.append('/home/mjb/Nutstore/deepStack/')
+sys.path.append('../')
 
 
 from sys import argv

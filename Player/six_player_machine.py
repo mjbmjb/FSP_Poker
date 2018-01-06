@@ -24,7 +24,7 @@ env = SimEnv()
 class SixPlayerMachine:
     
     def __init__(self):
-        self.dqn_optim = DQNOptim()
+        self.net_rl = [DQNOptim()] * game_settings.player_count
         self.net_sl = [SLOptim()] * game_settings.player_count
         
         
@@ -39,7 +39,8 @@ class SixPlayerMachine:
         # load sl model
         for i in range(game_settings.player_count):
             self.net_sl[i].model.load_state_dict(torch.load('../Data/Model/Iter:' + iter_str + '_' + str(i) +'_' + '.sl'))
-        
+            self.net_rl[i].model.load_state_dict(torch.load('../Data/Model/Iter:' + iter_str + '_' + str(i) +'_' + '.rl'))
+            self.net_rl[i].steps_done = self.net_rl[i].EPS_DECAY * 10
         
     # return int action['action:  ,'raise_amount':  ]
     def compute_action(self, state):

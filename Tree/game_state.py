@@ -6,7 +6,7 @@ Created on Sat Nov 18 03:53:35 2017
 @author: mjb
 """
 import sys
-sys.path.append('/home/mjb/Nutstore/deepStack/')
+sys.path.append('../')
 
 import Settings.constants as constants
 import Settings.arguments as arguments
@@ -293,7 +293,7 @@ class GameState(object):
         # hs store the hand strength
         dll.evalShowdown(board, hole, game_settings.player_count, hs)
         
-        hst = arguments.ByteTensor(game_settings.player_count)
+        hst = arguments.LongTensor(game_settings.player_count)
         for i in range(game_settings.player_count):
            hst[i] = hs[i]
         return hst == hst[show_player].max()
@@ -324,7 +324,7 @@ class GameState(object):
         if sp_num == 1:
             terminal_value[self.bets.tolist().index(max_bet)] = sum_bet
         elif sp_num > 1:
-            for street in range(self.street, constants.streets_count):
+            for street in range(self.street + 1, constants.streets_count):
                 self._deal_board(street)
             winner = self._get_showdown_winner(show_player)
             terminal_value[winner] = self.bets.sum() / winner.sum()

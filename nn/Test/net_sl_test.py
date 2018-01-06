@@ -7,7 +7,7 @@ Created on Sun Nov 26 05:16:45 2017
 """
 
 import sys
-sys.path.append('/home/mjb/Nutstore/deepStack/')
+sys.path.append('../')
 
 import torch
 import numpy as np

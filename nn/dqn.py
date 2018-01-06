@@ -254,7 +254,7 @@ class DQNOptim:
     
     def __init__(self):
         
-        self.BATCH_SIZE = 16
+        self.BATCH_SIZE = 128
         self.GAMMA = 0.999
         self.EPS_START = 0.9
         self.EPS_END = 0.05

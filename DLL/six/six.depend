@@ -1,0 +1,14 @@
+# depslib dependency file v1.0
+1513129761 source:/home/mjb/Nutstore/deepStack/DLL/handstrength.cpp
+	"evalHandTables.h"
+	<stdlib.h>
+	<stdio.h>
+	<iostream>
+	<unordered_map>
+	<time.h>
+	<set>
+	<string.h>
+
+1513048031 /home/mjb/Nutstore/deepStack/DLL/evalHandTables.h
+	<stdint.h>
+
