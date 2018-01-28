@@ -19,7 +19,7 @@ from ACPC.six_acpc_game import SixACPCGame
 
 player_machine = SixPlayerMachine()
 player_machine.load_model(argv[3])
-#acpc_game = SixACPCGame(["MATCHSTATE:4:2:cr10552ccr20000cfc:||||Td6c|"])
+#acpc_game = SixACPCGame(["MATCHSTATE:3:63:ccfcr18914cfcr20000fcc///:|Ac8d||Jd2s||8h7h/Kc5c6c/Ad/Jh"])
 #acpc_game = SixACPCGame(["MATCHSTATE:2:22:cfcr5722r11771cccc/ccccr12969fccr15663fcc/:||3c6d|||/Th9c5d/Ks"])
 
 acpc_game = SixACPCGame(None)

@@ -1,1 +1,2 @@
-python ./Player/six_player.py $1 $2 100
+cd Player
+python ./six_player.py $1 $2 100

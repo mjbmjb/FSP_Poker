@@ -68,7 +68,7 @@ class SixACPCGame:
             #3.0 figure out if we should act
             
             #current player to act is us
-            if parsed_state.current_player == msg2state.viewing_player:
+            if parsed_state.current_player == msg2state.viewing_player and not parsed_state.terminal:
                 #we should not act since this is an allin situations
                 print("Our turn")
         
