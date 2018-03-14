@@ -93,7 +93,7 @@ class card_tools:
     # @param board a possibly empty vector of board cards
     # @return the current betting round
     def board_to_street(self, board):
-        if board.dim() == 0:
+        if board.shape[0] == 0:
             return 0
         else:
             return 1

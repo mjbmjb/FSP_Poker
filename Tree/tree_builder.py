@@ -201,7 +201,7 @@ class PokerTreeBuilder:
       #3.0 bet actions    
       possible_bets = self.bet_sizing.get_possible_bets(parent_node)
       
-      if possible_bets.dim() != 0:
+      if possible_bets.shape[0] != 0:
         assert(possible_bets.size(1) == 2)
         
         for i in range(possible_bets.size(0)):
@@ -348,19 +348,19 @@ class PokerTreeBuilder:
       # transform hand(private and board)
 #      print(len(state.private))
       assert(len(state.private) == 2)
-      private_tensor = card_tools.hand_to_tensor(arguments.Tensor(state.private[node.current_player]))
+      private_tensor = card_tools.hand_to_tensor(arguments.Tensor(state.private[node.current_player].tolist()))
       board_tensor = card_tools.hand_to_tensor(node.board)
       
       #transform hand strengen
-      player_hand = arguments.Tensor(state.private[node.current_player].tolist() + node.board.tolist())
-      evaluator = Evaluator()
-      player_strength = evaluator.evaluate(player_hand, -1)
-      strength_tensor = arguments.Tensor([player_strength])
+#      player_hand = arguments.Tensor(state.private[node.current_player].tolist() + node.board.tolist())
+#      evaluator = Evaluator()
+#      player_strength = evaluator.evaluate(player_hand, -1)
+#      strength_tensor = arguments.Tensor([player_strength])
       
       # street: 1-2 position 3 bets 4-5 private 
       return_tensor = torch.unsqueeze(torch.cat((street_tensor, position_tensor,
-                                         bet_player_tensor, bet_oppo_tensor, private_tensor, board_tensor,
-                                         strength_tensor) , 0), 0)
+                                         bet_player_tensor, bet_oppo_tensor, private_tensor
+                                         ,board_tensor) , 0), 0)
 #      print("private:" + str(state.private[node.current_player]))
 #      print("board:" + node.board_string)
       

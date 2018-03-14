@@ -19,10 +19,12 @@ torch.set_default_tensor_type('torch.FloatTensor')
 WORK_PATH = '../'
 # whether to run on GPU
 gpu = torch.cuda.is_available()
-cpu_store = True
+cpu_store = False
 # list of pot-scaled bet sizes to use in tree
 # @field bet_sizing
 bet_sizing = [1]
+
+blind = 0
 # server running the ACPC dealer
 acpc_server = "localhost"
 # server port running the ACPC dealer
@@ -39,7 +41,7 @@ data_directory = 'Data/'
 # the size of the game's ante, in chips
 ante = 100
 # the size of each player's stack, in chips
-stack = 20000
+stack = 1200
 # the number of iterations that DeepStack runs CFR for
 cfr_iters = 1000
 # pot times
@@ -50,11 +52,14 @@ net = '{nn.Linear(input_size, 50), nn.PReLU(), nn.Linear(50, output_size)}'
 loss_F = F.nll_loss
 loss = nn.MSELoss()
 dqn_init_policy = Tensor([0.01,0.94,0.01,0.01,0.01,0.01,0.01])
-
+reservoir = False
+# culcate by how many step per episoid
+rl_update = 39
+sl_update = 80
 # how often to save the model during training
-save_epoch = 100
+save_epoch = 1000
 # how many epochs to train for
-epoch_count = 500
+epoch_count = 100000
 # how many solved poker situations are generated for use as training examples
 train_data_count = 100
 # how many solved poker situations are generated for use as validation examples
@@ -62,10 +67,10 @@ valid_data_count = 100
 # learning rate for neural net training
 learning_rate = 0.001
 #
-eta = 1.0
+eta = 0.3
 
 #table update number
-sl_update_num = 5
+sl_update_num = 128
 
 #load model
 load_model = False
@@ -73,7 +78,7 @@ load_model_num = 100000
 
 muilt_gpu = False
 
-bet_bucket = 10
+bet_bucket = 5
 bet_bucket_len = int(stack / bet_bucket)
 
 

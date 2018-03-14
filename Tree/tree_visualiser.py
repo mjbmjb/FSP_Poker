@@ -112,9 +112,9 @@ class TreeVisualiser:
         else:
           assert(True)#'unknown terminal node type')
       else:
-        out['label'] = out['label'] + '| bet0: ' + str(node.bets[0]) + ' ' + str(node.active[0]) +\
-                                      '| bet1: ' + str(node.bets[1]) + ' ' + str(node.active[1]) +\
-                                      '| bet2: ' + str(node.bets[2]) + ' ' + str(node.active[2]) 
+        out['label'] = out['label'] + '| bet0: ' + str(node.bets[0].item()) +\
+                                      '| bet1: ' + str(node.bets[1].item()) 
+#                                      '| bet2: ' + str(node.bets[2]) + ' ' + str(node.active[2]) 
 #                                      '| bet3: ' + str(node.bets[3]) + ' ' + str(node.active[3]) +\
 #                                      '| bet4: ' + str(node.bets[4]) + ' ' + str(node.active[4]) +\
 #                                      '| bet5: ' + str(node.bets[5]) + ' ' + str(node.active[5])

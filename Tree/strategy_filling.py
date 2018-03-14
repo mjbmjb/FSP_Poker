@@ -63,6 +63,8 @@ class StrategyFilling:
       if(node.terminal):
         return
     
+#      assert(node.current_player >= 0 )
+    
       node.strategy = arguments.Tensor(len(node.children), game_settings.card_count).fill_(1.0 / len(node.children))
     
     # Fills a node with a uniform strategy and recurses on the children.

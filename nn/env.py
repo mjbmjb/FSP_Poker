@@ -6,6 +6,8 @@ Created on Fri Sep  1 06:52:02 2017
 @author: mjb
 """
 import torch
+from torch.distributions import Categorical
+import numpy as np
 import Settings.game_settings as game_settings
 import Game.card_to_string as card_to_string
 
@@ -55,14 +57,24 @@ class Env:
         self.state.node = self.root_node
         
         
-    def _chance_next(self, this_node, state):
-        rannum = random.random()
-        hand_id = int(state.private[this_node.current_player][0])
-        chance_strategy = this_node.strategy[:,hand_id]
-        for i in range(len(chance_strategy)):
-            if rannum <= sum(chance_strategy[0: i+1]):
-                return this_node.children[i]
+#    def _chance_next(self, this_node, state):
+#        rannum = random.random()
+#        hand_id = int(state.private[this_node.current_player][0])
+#        chance_strategy = this_node.strategy[:,hand_id]
+#        for i in range(len(chance_strategy)):
+#            if rannum <= sum(chance_strategy[0: i+1]):
+#                return this_node.children[i]
                 
+    def _chance_next(self, this_node, state):
+        possible_board = [1] * len(this_node.children)
+        for p in state.private:
+            possible_board[p[0]] = 0
+        m = Categorical(torch.Tensor(possible_board))
+        child_id = m.sample().item()
+#        print(child_id)
+        return this_node.children[child_id]
+        
+            
     
     #@return next_node, reward, terminal
     def step(self, agent, state, action):
@@ -71,10 +83,10 @@ class Env:
         
         # TODO grasp if action if invaild
         if action[0][0] >= len(state.node.children):
-            action[0][0] = 1
+            action[0][0] = len(state.node.children) - 1
         # fold in first round is invaild
-        if action[0][0] == 0 and parent_node.bets[0] == 100 and parent_node.bets[1] == 100:
-            action[0][0] = 1
+#        if action[0][0] == 0 and parent_node.bets[0] == 100 and parent_node.bets[1] == 100:
+#            action[0][0] = 1
 
 #        assert (action < 4)
         next_node = state.node.children[action[0][0]]
@@ -91,7 +103,7 @@ class Env:
         
         #if chance node and the acting player is player 0 (who is act first at every round)
         if next_node.current_player == parent_node.current_player:
-            return next_state, next_state, reward, terminal
+            return next_state, next_state, reward - arguments.blind, terminal
         if next_node.terminal:
             reward = reward + self._get_terminal_value(next_state, parent_node.current_player)
             terminal = True
@@ -129,7 +141,7 @@ class Env:
 #            print('None')
 #        print(reward)
 #        self.process_log(state, real_next_node, action, reward)
-        return next_state, real_next_state, reward, terminal
+        return next_state, real_next_state, reward - arguments.blind, terminal
                            
         #[0,1,1,1] means the second action
         
@@ -188,8 +200,10 @@ class Env:
             # the one take call lose
             if player_strength < oppo_strength:
                 value[node.current_player] = node.bets.sum()
-            else:
+            elif player_strength > oppo_strength:
                 value[1-node.current_player] = node.bets.sum()
+            else:
+                value = node.bets.clone()
         else:
             assert(False)# not a vaild terminal node
             

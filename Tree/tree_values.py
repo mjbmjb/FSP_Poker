@@ -70,7 +70,7 @@ class TreeValues:
       impossible_range_sum = node.ranges_absolute.clone().mul_(impossible_hands_mask.view(1, game_settings.card_count).expand_as(node.ranges_absolute)).sum()  
       assert(impossible_range_sum == 0)# impossible_range_sum)
         
-      children_ranges_absolute = arguments.Tensor(len(node.children), constants.players_count, game_settings.card_count)
+      children_ranges_absolute = arguments.Tensor(len(node.children), game_settings.player_count, game_settings.card_count)
       
       #chance player
       if node.current_player == constants.players.chance:
@@ -189,11 +189,11 @@ class TreeValues:
     def compute_values(self, root, starting_ranges= arguments.Tensor([])):
       
       #1.0 set the starting range
-      uniform_ranges = arguments.Tensor(constants.players_count, game_settings.card_count).fill_(1.0/game_settings.card_count)  
+      uniform_ranges = arguments.Tensor(game_settings.player_count, game_settings.card_count).fill_(1.0/game_settings.card_count)  
       starting_ranges = starting_ranges if starting_ranges.dim() > 0 else uniform_ranges
       
       #2.0 check the starting ranges
-      checksum = starting_ranges.sum(1)[:, 0]
+      checksum = starting_ranges.sum(1)
       assert((checksum[0] - 1) < 0.0001 and (checksum[0] - 1) > -0.0001)#, 'starting range does not sum to 1')
       assert((checksum[1] - 1) < 0.0001 and (checksum[0] - 1) > -0.0001)#, 'starting range does not sum to 1')
       assert(starting_ranges.lt(0).sum() == 0) 

@@ -50,7 +50,7 @@ class PlayerMachine:
 #        action_id = (self.table_sl.select_action(state) if random.random() > arguments.eta \
 #                 else self.dqn_optim.select_action(state_tensor))[0][0]
 #        action_id = self.table_sl.select_action(state)[0][0]
-        action_id = self.net_sl[state.node.current_player].select_action(state_tensor)[0][0]
+        action_id = self.net_sl[state.node.current_player].select_action(state_tensor).item()
 #        print('_____________')
 #        print(action_id)
 #        print('_____________')
@@ -78,9 +78,9 @@ class PlayerMachine:
             # node possible bet in this state so call
             action['action'] = constants.acpc_actions.rraise
             if(len(possible_bet) <= raise_action_id):            
-                action['raise_amount'] = possible_bet[len(possible_bet) - 1]
+                action['raise_amount'] = possible_bet[len(possible_bet) - 1].item()
             else:
-                action['raise_amount'] = possible_bet[raise_action_id] # to override fold and call action
+                action['raise_amount'] = possible_bet[raise_action_id].item() # to override fold and call action
         else:
             assert(False)#invaild actions
 

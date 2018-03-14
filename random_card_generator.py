@@ -24,7 +24,7 @@ def generate_cards( count ):
   #marking all used cards
   used_cards = torch.ByteTensor(game_settings.card_count).zero_()
   
-  out = arguments.Tensor(count)
+  out = arguments.IntTensor(count)
   #counter for generated cards
   generated_cards_count = 0
   while(generated_cards_count < count):

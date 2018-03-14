@@ -29,7 +29,9 @@ from collections import namedtuple
 builder = PokerTreeBuilder()
 
 num_episodes = 10
+print('start build env')
 env = Env()
+print('env builded')
 value_tester = ValuesTester()
 
 Agent = namedtuple('Agent',['rl','sl'])
@@ -37,7 +39,23 @@ Agent = namedtuple('Agent',['rl','sl'])
 agent0 = Agent(rl=DQNOptim(),sl=SLOptim())
 agent1 = Agent(rl=DQNOptim(),sl=SLOptim())
 table_sl = agent0.sl
-agents = [agent0,agent1]
+agents = [agent0,agent0]
+
+import visdom
+viz = visdom.Visdom()
+win_sl = viz.line(X=np.array([0]),Y=np.array([0]))
+win_rl = viz.line(X=np.array([0]),Y=np.array([0]))
+def plot_explo_vis(episod, explo_sl,explo_rl):    
+    viz.line(X=np.array([episod]),
+                 Y=np.array([explo_sl]),
+                 win=win_sl,
+                 update='append')
+    viz.line(X=np.array([episod]),
+                 Y=np.array([explo_rl]),
+                 win=win_rl,
+                 update='append')
+
+
 
 def load_model(dqn_optim, iter_time):
     iter_str = str(iter_time)
@@ -47,7 +65,7 @@ def load_model(dqn_optim, iter_time):
     table_sl.strategy = torch.load('../Data/Model/Iter:' + iter_str + '.sl')
 
 def save_model(episod):
-    path = '../Data/Model/'
+    path = '/home/carc/mjb/deepStack/Data/Model/'
     sl_name = path + "Iter:" + str(episod)
     rl_name = path + "Iter:" + str(episod)
     memory_name = path + 'Iter:' + str(episod)   
@@ -77,8 +95,7 @@ def get_action(state, current_player ,flag):
     # flag = 0 sl flag = 1 rl
     action = table_sl.select_action(state) if flag == 0 else agents[current_player].rl.select_action(state)
     return action
-
-    
+           
 
 ######################################################################
 #
@@ -116,7 +133,8 @@ def main():
             current_player = state.node.current_player
             # Select and perform an action
 #            print(state_tensor.size(1))
-            assert(state_tensor.size(1) == 27)
+            assert(state_tensor.size(1) == 28)
+#            print(state.node.street)
             
             if flag == 0:
                 # sl
@@ -128,7 +146,7 @@ def main():
                 assert(False)
                 
             next_state, real_next_state, reward, done = env.step(agents[1-current_player], state, action)
-#            reward = reward / 2400.0
+            reward = reward / 1200.0
             
             # transform to tensor
             real_next_state_tensor = builder.statenode_to_tensor(real_next_state)
@@ -136,25 +154,29 @@ def main():
             action_tensor = action
 
             # Store the transition in reforcement learning memory Mrl
-            agents[current_player].rl.memory.push(state_tensor, action_tensor, real_next_state_tensor, arguments.Tensor([reward]))
+            agents[current_player].rl.memory.push(state_tensor, action_tensor, real_next_state_tensor, arguments.Tensor([[reward]]))
                 
-            training_flag = False
+            training_flag = True
 
-            if len(agents[current_player].rl.memory.memory) >= agents[current_player].rl.memory.capacity:
+#            if len(agents[current_player].rl.memory.memory) >= agents[current_player].rl.memory.capacity / 100:
 
-                training_flag = True
-                if flag == 1:
-                    # if choose sl store tuple(s,a) in supervised learning memory Msl
-                    agents[current_player].sl.memory.push(state_tensor, action_tensor[0])
-                    table_update_num = table_update_num + 1
-                    if True or table_update_num >= arguments.sl_update_num:
+#                training_flag = True
+                
+            if flag == 1:
+                # if choose sl store tuple(s,a) in supervised learning memory Msl
+                agents[current_player].sl.memory.push(state_tensor, action_tensor[0])
+#                    table_update_num = table_update_num + 1
+#                    if  table_update_num >= arguments.sl_update_num:
+            if i_episode % arguments.sl_update == 0:
 #                        agents[current_player].sl.update_strategy()
-                        agents[current_player].sl.optimize_model()
+#                for _ in range(2):
+                agents[current_player].sl.optimize_model()
 #                        agents[current_player].sl.plot_error_vis(i_episode)
-                        table_update_num = 0
-                
-                # Perform one step of the optimization (on the target network)
-                agents[current_player].rl.optimize_model() 
+#                        table_update_num = 0
+            if i_episode % arguments.rl_update == 0:
+                for _ in range(2):
+                    # Perform one step of the optimization (on the target network)
+                    agents[current_player].rl.optimize_model() 
                 # Move to the next state
             state = next_state
     
@@ -171,9 +193,21 @@ def main():
             if done:
 #                if(i_episode % 100 == 0 and training_flag):
 #                    agents[current_player].rl.plot_error_vis(i_episode)
+                
                 if(i_episode % arguments.save_epoch == 0 and training_flag):
-                    save_model(i_episode)
-                    value_tester.test(agents[current_player].sl)
+                    print('i_episode: %d'% i_episode)
+                    print('rl memory: %d'% len(agents[current_player].rl.memory.memory))
+                    print('sl memory: %d'% len(agents[current_player].sl.memory.memory))
+                    print('-------------')
+                    
+                    if(i_episode % (arguments.save_epoch*2) == 0):
+#                    save_model(i_episode)
+                        explo_sl= value_tester.test(agents[current_player].rl)
+                        explo_rl = value_tester.test(agents[current_player].sl)
+                        plot_explo_vis(i_episode,explo_sl/10,explo_rl/10)
+                        save_model(i_episode)
+                    agents[0].rl.plot_error_vis(i_episode)
+                    agents[0].sl.plot_error_vis(i_episode)
 #                    value_tester.test(agents[current_player].sl.strategy.clone(), i_episode)
 #                    save_table_csv(table_sl.strategy)
 #                dqn_optim.episode_durations.append(t + 1)
@@ -186,7 +220,7 @@ def main():
     # save the model
     if arguments.load_model:
         i_episode = i_episode + arguments.load_model_num
-            
+    save_model(i_episode)     
             
     print('Complete')
     print((time.time() - time_start))

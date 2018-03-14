@@ -33,29 +33,49 @@ Tensor = FloatTensor
 
 def weights_init(m):
     if isinstance(m, nn.Linear):
-        normal(m.weight.data)
-        normal(m.bias.data)
+        normal(m.weight.data,std=0.1)
+        normal(m.bias.data,std=0.1)
 
+def reservoir_sample(memory, K):
+    data = memory.memory
+    sample = []
+    for i,line in enumerate(data):
+        if i < K:
+            sample.append(line)
+        elif i >= K and random.random() < K/float(i+1):
+            replace = random.randint(0,len(sample)-1)
+            sample[replace] = line
+    memory.memory = []
+    memory.position = 0
+    
+#    print('sample sl len:%d'%len(sample))
+    return sample
 
 class SLNet(nn.Module):
     def __init__(self):
         super(SLNet, self).__init__()
-        self.fc1 = nn.Linear(274,256)
-        self.fc1_bn = nn.BatchNorm1d(256)
-        self.fc2 = nn.Linear(256,128)
-        self.fc2_bn = nn.BatchNorm1d(128)
-        self.fc3 = nn.Linear(128,64)
+        self.fc1 = nn.Linear(28,64)
+        self.fc1_bn = nn.BatchNorm1d(64)
+        self.fc2 = nn.Linear(64,64)
+        self.fc2_bn = nn.BatchNorm1d(64)
+        self.fc3 = nn.Linear(64,64)
         self.fc3_bn = nn.BatchNorm1d(64)
-        self.output = nn.Linear(64,7)
+        self.output = nn.Linear(64,5)
         self.logsoftmax = nn.LogSoftmax()
         
     def forward(self, x):
         x = self.fc1(x)
+        x = F.dropout(x, p=0.5)
         x = F.relu(self.fc1_bn(x))
+#        x = F.relu(x)
         x = self.fc2(x)
+        x = F.dropout(x, p=0.5)
         x = F.relu(self.fc2_bn(x))
+#        x = F.relu(x)
         x = self.fc3(x)
+        x = F.dropout(x, p=0.2)
         x = F.relu(self.fc3_bn(x))
+#        x = F.relu(x)
         output = self.output(x)
         output = self.logsoftmax(output)
         return output
@@ -112,7 +132,7 @@ class SLOptim:
     
     def __init__(self):
         
-        self.BATCH_SIZE = 128
+        self.BATCH_SIZE = 64
         
         self.model = SLNet()
         
@@ -127,7 +147,7 @@ class SLOptim:
             
         
             
-        self.optimizer = optim.RMSprop(self.model.parameters(),lr=0.0001)
+        self.optimizer = optim.Adam(self.model.parameters(),lr=0.0001,weight_decay=0.0005)
         self.memory = Memory(100000)
         self.loss = nn.NLLLoss()
         
@@ -185,26 +205,32 @@ class SLOptim:
         global last_sync
         if len(self.memory) < self.BATCH_SIZE:
             return
-        transitions = self.memory.sample(self.BATCH_SIZE)
+        
+        if arguments.reservoir:
+            transitions = reservoir_sample(self.memory, self.BATCH_SIZE)
+        else:
+            transitions = self.memory.sample(self.BATCH_SIZE)
+        
         # Transpose the batch (see http://stackoverflow.com/a/19343/3343043 for
         # detailed explanation).
         batch = Transition(*zip(*transitions))
     
 
-        state_batch = Variable(torch.cat(batch.state), volatile=False)
-        excepted_policy_batch = Variable(torch.cat(batch.policy), volatile=True)
+        state_batch = Variable(torch.cat(batch.state))
+        excepted_policy_batch = Variable(torch.cat(batch.policy))
     
         policy_batch = self.model(state_batch)
         
         output = self.loss(policy_batch, excepted_policy_batch)
         
 #        print(len(loss.data))
-     
+#        print(excepted_policy_batch)
+#        print(torch.exp(policy_batch[0:2]))
 #        self.error_acc.append(loss.data.sum())
 #        self.current_sum = (self.steps_done / (self.steps_done + 1.0)) * self.current_sum + loss.data[0]/(self.steps_done + 1)
 #        print(self.steps_done)
 #        print(self.current_sum)
-        self.current_sum = output.data[0]
+        self.current_sum = output.data.item()
 #        print(self.current_sum)
 
         # Optimize the model

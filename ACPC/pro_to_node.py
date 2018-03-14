@@ -450,7 +450,7 @@ class ProToNode:
     # @return a string messsage in ACPC format to send to the server
     def action_to_message(self, last_message, adviced_action):
   
-        out = last_message.replace('\r\n','')
+        out = last_message.replace('\n','')
   
         protocol_action = self._bet_to_protocol_action(adviced_action)
         

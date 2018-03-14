@@ -59,7 +59,7 @@ for card in range(game_settings.card_count):
 # @return the string representation of the card
 def card_to_string(card):
   assert(card >= 0 and card <= game_settings.card_count )
-  return card_to_string_table[card]
+  return card_to_string_table[int(card)]
 
 # Converts several cards' numeric representations to their string 
 # representations.

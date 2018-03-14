@@ -150,7 +150,7 @@ def main():
     
     if arguments.load_model:
         load_model(arguments.load_model_num)
-    Agent = Agents[0]
+#    Agent = Agents[0]
     
     for i_episode in range(arguments.epoch_count + 1):
 #        random.shuffle(Agents)
@@ -163,6 +163,7 @@ def main():
 #        test.test_five_card(state)
         
         for t in count():
+            Agent = Agents[state.current_player]
             state_tensor = env.state2tensor(state)
             current_player = state.current_player
             # Select and perform an action
@@ -173,7 +174,7 @@ def main():
             if flag == 0:
                 # sl
 #                action = Agents[current_player].sl.select_action(state_tensor)
-                action = Agents[0].sl.select_action(state_tensor)
+                action = Agents.sl.select_action(state_tensor)
 #                print("SL Action:"+str(action[0][0]))
             elif flag == 1:
                 #rl
@@ -190,7 +191,7 @@ def main():
                 # if choose sl store tuple(s,a) in supervised learning memory Msl
                 state_tensor = env.state2tensor(state)
                 action_tensor = action[0]
-                if Agent.rl.steps_done > Agent.rl.EPS_DECAY * 3:
+                if Agents[0].rl.steps_done > Agents[0].rl.EPS_DECAY * 3:
                     Agent.sl.memory.push(state_tensor, action_tensor)
 #                print('Action:' + str(action[0][0]))
 
@@ -198,19 +199,18 @@ def main():
             if done:
                 store_memory(env, Agent)
 #                for agent in Agents:
-                if Agent.rl.steps_done > 0 and Agent.rl.steps_done % 300 == 0:
-                    Agent.rl.target_net.load_state_dict(Agent.rl.model.state_dict())
-                if len(Agent.rl.memory.memory) >= Agent.rl.memory.capacity and i_episode % 2 == 0: 
-                    Agent.rl.optimize_model()
+                if Agents[0].rl.steps_done > 0 and Agents[0].rl.steps_done % 300 == 0:
+                    Agents[0].rl.target_net.load_state_dict(Agents[0].rl.model.state_dict())
+                if len(Agents[0].rl.memory.memory) >= Agents[0].rl.memory.capacity and i_episode % 2 == 0: 
+                    Agents[0].rl.optimize_model()
                 if len(Agent.sl.memory.memory) >= Agent.sl.memory.capacity and i_episode % 2 == 0:
                     Agent.sl.optimize_model()
                 if i_episode % 100 == 0:
-#                    Agent.rl.plot_error_vis(i_episode)
+#                    Agents[0].rl.plot_error_vis(i_episode)
 #                    Agent.sl.plot_error_vis(i_episode)
-                    print("rl")
-                    print(len(Agent.rl.memory))
-                    print("sl")
-                    print(len(Agent.sl.memory))
+                   print('episod: %d rl: %d,sl: %d' % (i_episode,\
+                                                        len(Agents[0].rl.memory),\
+                                                        len(Agent.sl.memory)))
                     # record the award
 #                    record_reward(Agents, env, Reward)
                 if i_episode != 0 and i_episode % arguments.save_epoch == 0:

@@ -22,6 +22,7 @@ from Tree.tree_visualiser import TreeVisualiser
 from Tree.tree_values import TreeValues
 from nn.state import GameState
 from nn.net_sl import SLOptim
+from nn.dqn import DQNOptim
 import Settings.constants as constants
 
 class ValuesTester:
@@ -72,6 +73,11 @@ class ValuesTester:
             state.node = node
             tensor = builder.statenode_to_tensor(state)
             strategy = agent_sl.model(Variable(tensor)).data[0][0:len(node.children)]
+            if isinstance(agent_sl, DQNOptim):
+#                print(strategy)
+                max_ix = strategy.lt(strategy.max())
+                strategy[max_ix] = 0.0001
+                strategy[1-max_ix] = 1
             strategy.div_(strategy.sum())
             node.strategy[:,card] = strategy
 
@@ -105,10 +111,11 @@ class ValuesTester:
         filling.fill_uniform(tree)
 
 
-        starting_ranges = arguments.Tensor(constants.players_count, game_settings.card_count)
+        starting_ranges = arguments.Tensor(game_settings.player_count, game_settings.card_count)
         starting_ranges[0].copy_(range1)
         starting_ranges[1].copy_(range2)
         
+        table_sl.model.eval()
 #        self.dfs_fill_table(tree, table_sl,builder)
         self.dfs_fill_strategy(table_sl,tree, builder)
         
@@ -117,8 +124,8 @@ class ValuesTester:
         
         
         
-        print('Exploitability: ' + str(tree.exploitability) + '[chips]' )
-        
+        print('Exploitability: ' + str(tree.exploitability.item()) + '[chips]' )
+        return tree.exploitability.item()
 #        visualiser = TreeVisualiser()
 #        visualiser.graphviz(tree,'test_values')
         

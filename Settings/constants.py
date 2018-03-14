@@ -11,14 +11,14 @@ Created on Sun Aug 20 00:55:09 2017
 # the number of players in the game
 #players_count = 2
 # the number of betting rounds in the game
-streets_count = 4
+streets_count = 2
 
 # IDs for each player and chance
 # @field chance `0`
 # @field P1 `1`
 # @field P2 `2`
 class players:
-    chance = -2
+    chance = -3
     P1 = 0
     P2 = 1
 
@@ -32,7 +32,7 @@ class node_types:
     terminal_fold = -2
     terminal_call = -1
     check = -1
-    chance_node = 0
+    chance_node = -3
     inner_node = 1
 
 # IDs for fold and check/call actions

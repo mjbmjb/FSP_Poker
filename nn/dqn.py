@@ -105,9 +105,18 @@ Transition = namedtuple('Transition',
 
 def weights_init(m):
     if isinstance(m, nn.Linear):
-        normal(m.weight.data)
-        normal(m.bias.data)
+        normal(m.weight.data, mean=0, std=0.1)
+        normal(m.bias.data, mean=0, std=0.1)
 
+#def reservoir_sample(data, K):
+#    sample = []
+#    for i,line in enumerate(data):
+#        if i < K:
+#            sample.append(line)
+#        elif i >= K and random.random() < K/float(i+1):
+#            replace = random.randint(0,len(sample)-1)
+#            sample[replace] = line
+#    return sample
 
 class ReplayMemory(object):
 
@@ -207,13 +216,13 @@ class DQN(nn.Module):
 
     def __init__(self):
         super(DQN, self).__init__()
-        self.fc1 = nn.Linear(274, 256)
-        self.fc1_bn = nn.BatchNorm1d(256)
-        self.fc2 = nn.Linear(256,128)
-        self.fc2_bn = nn.BatchNorm1d(128)
-        self.fc3 = nn.Linear(128,64)
+        self.fc1 = nn.Linear(28, 64)
+        self.fc1_bn = nn.BatchNorm1d(64)
+        self.fc2 = nn.Linear(64,64)
+        self.fc2_bn = nn.BatchNorm1d(64)
+        self.fc3 = nn.Linear(64,64)
         self.fc3_bn = nn.BatchNorm1d(64)
-        self.out = nn.Linear(64, 7)
+        self.out = nn.Linear(64, 5)
 
     def forward(self, x):
         x = self.fc1(x)
@@ -223,7 +232,8 @@ class DQN(nn.Module):
         x = self.fc3(x)
         x = F.relu(self.fc3_bn(x))
         
-        return self.out(x.view(x.size(0), -1))
+#        return self.out(x.view(x.size(0), -1))
+        return self.out(x)
 
 
 class DQNOptim:
@@ -255,7 +265,7 @@ class DQNOptim:
     def __init__(self):
         
         self.BATCH_SIZE = 128
-        self.GAMMA = 0.999
+        self.GAMMA = 1.0
         self.EPS_START = 0.9
         self.EPS_END = 0.05
         self.EPS_DECAY = 2000
@@ -275,7 +285,7 @@ class DQNOptim:
             self.target_net = nn.DataParallel(self.target_net)
             
             
-        self.optimizer = optim.RMSprop(self.model.parameters(),lr=0.0001)
+        self.optimizer = optim.SGD(self.model.parameters(),lr=0.01,weight_decay=0.0005)
         self.memory = ReplayMemory(100000)
         
         
@@ -293,8 +303,9 @@ class DQNOptim:
     def select_action(self, state):
         self.model.eval() # to use the batchNorm correctly
         sample = random.random()
-        eps_threshold = self.EPS_END + (self.EPS_START - self.EPS_END) * \
-            math.exp(-1. * self.steps_done / self.EPS_DECAY)
+#        eps_threshold = self.EPS_END + (self.EPS_START - self.EPS_END) * \
+#            math.exp(-1. * self.steps_done / self.EPS_DECAY)
+        eps_threshold = 0.06 / np.sqrt(self.steps_done)
 #        self.steps_done += 1
         if sample > eps_threshold:
             return self.model(
@@ -369,7 +380,11 @@ class DQNOptim:
         global last_sync
         if len(self.memory) < self.BATCH_SIZE:
             return
+
         transitions = self.memory.sample(self.BATCH_SIZE)
+        
+        
+        
         # Transpose the batch (see http://stackoverflow.com/a/19343/3343043 for
         # detailed explanation).
         batch = Transition(*zip(*transitions))
@@ -384,8 +399,7 @@ class DQNOptim:
 #        if len([s for s in batch.next_state if s is not None]) == 0 :
 #            return
         non_final_next_states = Variable(torch.cat([s for s in batch.next_state
-                                                    if s is not None]),
-                                         volatile=True)
+                                                    if s is not None]))
         state_batch = Variable(torch.cat(batch.state))
         action_batch = Variable(torch.cat(batch.action))
         reward_batch = Variable(torch.cat(batch.reward))
@@ -394,19 +408,27 @@ class DQNOptim:
         # columns of actions taken
         state_action_values = self.model(state_batch).gather(1, action_batch)
     
-        # Compute V(s_{t+1}) for all next states.
-        next_state_values = Variable(torch.zeros(self.BATCH_SIZE).type(Tensor))
-        next_state_values[non_final_mask] = self.target_net(non_final_next_states).max(1)[0]
-#        next_state_values[non_final_mask] = model(non_final_next_states).max(1)[0]
-        # Now, we don't want to mess up the loss with a volatile flag, so let's
-        # clear it. After this, we'll just end up with a Variable that has
-        # requires_grad=False
-        next_state_values.volatile = False
-        # Compute the expected Q values
-        expected_state_action_values = (next_state_values * self.GAMMA) + reward_batch
+        #modify for 2 player
+#        state_action_values = self.model(state_batch).gather(1, action_batch).squeeze()
+    
+        with torch.no_grad():
+            # Compute V(s_{t+1}) for all next states.
+            next_state_values = Variable(torch.zeros(self.BATCH_SIZE,1).type(Tensor))
+            next_state_values[non_final_mask] = self.target_net(non_final_next_states).max(1)[0].unsqueeze(1)
+#           next_state_values[non_final_mask] = model(non_final_next_states).max(1)[0]
+            # Now, we don't want to mess up the loss with a volatile flag, so let's
+            # clear it. After this, we'll just end up with a Variable that has
+            # requires_grad=False
+#            next_state_values.volatile = False
+            # Compute the expected Q values
+            expected_state_action_values = (next_state_values * self.GAMMA) + reward_batch
+
     
 #        # Compute Huber loss
 #        loss = arguments.loss_F(state_action_values, expected_state_action_values)
+
+#        if self.steps_done % 300 == 0:
+#            print(state_action_values[0:2])
 
         loss = arguments.loss(state_action_values, expected_state_action_values)
         
@@ -416,7 +438,7 @@ class DQNOptim:
 #        self.current_sum = (self.steps_done / (self.steps_done + 1.0)) * self.current_sum + loss.data[0]/(self.steps_done + 1)
 #        print(self.steps_done)
 #        print(self.current_sum)
-        self.current_sum = loss.data[0]
+        self.current_sum = loss.data.item()
 #        print(self.current_sum)
 
         # Optimize the model
