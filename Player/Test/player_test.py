@@ -6,15 +6,15 @@ Created on Wed Nov 22 23:37:03 2017
 @author: mjb
 """
 import sys
-sys.path.append('../')
+sys.path.append('../../')
 
 import torch
 
 import Settings.arguments as arguments
 import Settings.game_settings as game_settings
 import Settings.constants as constants
-from Player.six_player_machine import SixPlayerMachine
-from ACPC.six_acpc_game import SixACPCGame
+# from Player.six_player_machine import SixPlayerMachine
+# from ACPC.six_acpc_game import SixACPCGame
 from Tree.game_state import GameState
 from Tree.game_state import Action
 from nn.sim_env import SimEnv
@@ -23,10 +23,15 @@ from nn.dqn import *
 from nn.table_sl import TableSL
 from nn.net_sl import SLOptim
 
-iter_str = str(10000)
+iter_str = str(800000)
 
 net_sl = [SLOptim()] * game_settings.player_count
 net_rl = [DQNOptim()] * game_settings.player_count
+
+for op_sl, op_rl in zip(net_sl, net_rl):
+    op_rl.model.eval()
+    op_sl.model.eval()
+
 
 #for i in range(game_settings.player_count):
 #    net_sl[i].model.load_state_dict(torch.load(arguments.WORK_PATH+'/Data/Model/Iter:' + iter_str + '_' + str(i) +'_' + '.sl'))
@@ -35,12 +40,12 @@ net_rl = [DQNOptim()] * game_settings.player_count
 #    net_rl[i].model.eval()
 state = GameState()
 call = Action(atype=constants.actions.ccall,amount=0)
-rrasie = Action(atype=constants.actions.rraise,amount=2000)
+rrasie = Action(atype=constants.actions.rraise,amount=1000)
 fold = Action(atype=constants.actions.fold,amount=0)
 
-hole = torch.LongTensor([[40,41],[50,51],[4,5],[8,9],[44,45],[28,29]])
+hole = torch.LongTensor([[0],[1],[2],[3],[4],[5]])
 #board = torch.LongTensor([6,30,31,38,43])
-board = torch.LongTensor([6,30,31,39,43])
+board = torch.LongTensor([6])
 
 state.bets = arguments.LongTensor([1000,1000,1000,1000,1000,1000])
 state.street = 1

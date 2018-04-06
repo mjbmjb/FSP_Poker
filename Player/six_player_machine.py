@@ -38,8 +38,9 @@ class SixPlayerMachine:
         
         # load sl model
         for i in range(game_settings.player_count):
-            self.net_sl[i].model.load_state_dict(torch.load('../Data/Model/Iter:' + iter_str + '_' + str(i) +'_' + '.sl'))
-            self.net_rl[i].model.load_state_dict(torch.load('../Data/Model/Iter:' + iter_str + '_' + str(i) +'_' + '.rl'))
+            # TODO fix i
+            self.net_sl[i].model.load_state_dict(torch.load('../Data/Model/Iter:' + iter_str + '_' + str(0) +'_' + '.sl'))
+            self.net_rl[i].model.load_state_dict(torch.load('../Data/Model/Iter:' + iter_str + '_' + str(0) +'_' + '.rl'))
             self.net_rl[i].steps_done = self.net_rl[i].EPS_DECAY * 10
         
     # return int action['action:  ,'raise_amount':  ]

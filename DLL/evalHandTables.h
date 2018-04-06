@@ -4272,7 +4272,8 @@ static void addCardToCardset( Cardset *c, int suit, int rank )
 }
 
 int add(int a, int b);
-void evalShowdown(int board[], int hole[][2], int player_number, int hs[]);
+void evalShowdown(int board[],int board_size, int hole[][2], int player_number, int hs[]);
+void evalShowdown_1(int board[], int board_size, int hole[], int player_number, int hs[]);
 double sample_5board_win_pr(int board[], int hole[], int opponent_number, int iteration);
 double sample_4board_win_pr(int board[], int hole[], int opponent_number, int iteration);
 double sample_3board_win_pr(int board[], int hole[], int opponent_number, int iteration);

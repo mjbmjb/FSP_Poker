@@ -16,11 +16,24 @@ import torch.nn.functional as F
 torch.set_default_tensor_type('torch.FloatTensor')
 
 #WORK_PATH = '/home/mjb/Nutstore/deepStack'
-WORK_PATH = '../'
+WORK_PATH = '/home/carc/mjb/deepStack/'
 # whether to run on GPU
 gpu = torch.cuda.is_available()
 cpu_store = False
+multi_agent = False
 # list of pot-scaled bet sizes to use in tree
+
+# dict of model
+# rl_model = 'reinforce'
+rl_model = 'dqn'
+sl_model = 'mlr'
+
+# params for rl
+gamma = 0.999
+
+# params for sl
+sl_start = 1000
+
 # @field bet_sizing
 bet_sizing = [1]
 
@@ -51,15 +64,15 @@ cfr_skip_iters = 500
 net = '{nn.Linear(input_size, 50), nn.PReLU(), nn.Linear(50, output_size)}'
 loss_F = F.nll_loss
 loss = nn.MSELoss()
-dqn_init_policy = Tensor([0.01,0.94,0.01,0.01,0.01,0.01,0.01])
+dqn_init_policy = Tensor([0.01,0.50,0.45,0.01,0.01,0.01,0.01])
 reservoir = False
 # culcate by how many step per episoid
-rl_update = 39
-sl_update = 80
+rl_update = 20
+sl_update = 40
 # how often to save the model during training
-save_epoch = 1000
+save_epoch = 5000
 # how many epochs to train for
-epoch_count = 100000
+epoch_count = 50000
 # how many solved poker situations are generated for use as training examples
 train_data_count = 100
 # how many solved poker situations are generated for use as validation examples
@@ -67,7 +80,7 @@ valid_data_count = 100
 # learning rate for neural net training
 learning_rate = 0.001
 #
-eta = 0.3
+eta = 0.5
 
 #table update number
 sl_update_num = 128

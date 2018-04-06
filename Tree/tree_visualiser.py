@@ -19,7 +19,6 @@ import Settings.arguments as arguments
 
 
 from graphviz import Source
-#TODO: README
 #dot tree_2.dot -Tpng -O
 
 class TreeVisualiser:

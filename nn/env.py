@@ -76,7 +76,7 @@ class Env:
         
             
     
-    #@return next_node, reward, terminal
+    # @return next_node, reward, terminal
     def step(self, agent, state, action):
         parent_node = state.node
         

@@ -68,6 +68,7 @@ import torch.nn.functional as F
 import torch.optim as optim
 from torch.autograd import Variable
 from torch.distributions import Categorical
+from torch.nn.utils.convert_parameters import vector_to_parameters, parameters_to_vector
 
 import Settings.arguments as arguments
 import Settings.game_settings as game_settings
@@ -105,7 +106,7 @@ Transition = namedtuple('Transition',
 
 def weights_init(m):
     if isinstance(m, nn.Linear):
-        normal(m.weight.data, mean=0, std=0.1)
+        normal(m.weight.data, mean=0.3, std=0.1)
         normal(m.bias.data, mean=0, std=0.1)
 
 #def reservoir_sample(data, K):
@@ -216,7 +217,7 @@ class DQN(nn.Module):
 
     def __init__(self):
         super(DQN, self).__init__()
-        self.fc1 = nn.Linear(28, 64)
+        self.fc1 = nn.Linear(70, 64)
         self.fc1_bn = nn.BatchNorm1d(64)
         self.fc2 = nn.Linear(64,64)
         self.fc2_bn = nn.BatchNorm1d(64)
@@ -234,6 +235,15 @@ class DQN(nn.Module):
         
 #        return self.out(x.view(x.size(0), -1))
         return self.out(x)
+
+    def forward_fc(self, x):
+        x = self.fc1(x)
+        x = F.relu(self.fc1_bn(x))
+        x = self.fc2(x)
+        x = F.relu(self.fc2_bn(x))
+        x = self.fc3(x)
+        x = F.relu(self.fc3_bn(x))
+        return x
 
 
 class DQNOptim:
@@ -262,7 +272,7 @@ class DQNOptim:
     #    episode.
     #
     
-    def __init__(self):
+    def __init__(self, lr=1e-4):
         
         self.BATCH_SIZE = 128
         self.GAMMA = 1.0
@@ -275,6 +285,7 @@ class DQNOptim:
         
         # init weight and baise
         self.model.apply(weights_init)
+        self.target_net.apply(weights_init)
         
         if use_cuda:
             self.model.cuda()
@@ -284,8 +295,9 @@ class DQNOptim:
             self.model = nn.DataParallel(self.model)
             self.target_net = nn.DataParallel(self.target_net)
             
-            
-        self.optimizer = optim.SGD(self.model.parameters(),lr=0.01,weight_decay=0.0005)
+        self.lr = lr
+
+        self.optimizer = optim.SGD(self.model.parameters(),self.lr,weight_decay=0.0001)
         self.memory = ReplayMemory(100000)
         
         
@@ -300,7 +312,7 @@ class DQNOptim:
         
     
     # @return action LongTensor[[]]
-    def select_action(self, state):
+    def select_action(self, state, *useless):
         self.model.eval() # to use the batchNorm correctly
         sample = random.random()
 #        eps_threshold = self.EPS_END + (self.EPS_START - self.EPS_END) * \
@@ -338,6 +350,8 @@ class DQNOptim:
             display.display(self.plt.gcf())
     
     def plot_error_vis(self, step):
+        if self.steps_done == 0:
+            return 
         if not self.viz:
             import visdom
             self.viz = visdom.Visdom()
@@ -431,7 +445,10 @@ class DQNOptim:
 #            print(state_action_values[0:2])
 
         loss = arguments.loss(state_action_values, expected_state_action_values)
-        
+
+        # current_params = parameters_to_vector(self.model.parameters())
+        # if any(np.less(current_params.data.cpu().numpy(),0)):
+        #     print("RELU optimization diverged. Rolling back update...")
 #        print(len(loss.data))
      
 #        self.error_acc.append(loss.data.sum())
@@ -445,6 +462,6 @@ class DQNOptim:
         self.optimizer.zero_grad()
         loss.backward()
         for param in self.model.parameters():
-            param.grad.data.clamp_(-1, 1)
+            param.grad.data.clamp_(0,1)
         self.optimizer.step()
     

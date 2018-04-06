@@ -16,10 +16,10 @@ import random
 
 from collections import namedtuple
 
-Action = namedtuple('Ation', ['atype', 'amount'])
+Action = namedtuple('Action', ['atype', 'amount'])
 
 from ctypes import cdll, c_int
-dll = cdll.LoadLibrary(arguments.WORK_PATH + "/DLL/handstrength.so")
+dll = cdll.LoadLibrary(arguments.WORK_PATH + "DLL/handstrength.so")
 
 
 class GameState(object):
@@ -30,7 +30,7 @@ class GameState(object):
         self.atype = ""
         self.street = 0
         self.board  = arguments.IntTensor(game_settings.board_card_count).fill_(-1)
-        self.hole = arguments.IntTensor(game_settings.player_count,2).fill_(-1)
+        self.hole = arguments.IntTensor(game_settings.player_count,game_settings.private_count).fill_(-1)
         self.board_string = ""    
         self.used_card = arguments.ByteTensor(game_settings.card_count).fill_(0)
 
@@ -39,7 +39,7 @@ class GameState(object):
         self.bet_sizing = []       
         
         self.bets = arguments.IntTensor(game_settings.player_count).fill_(0)
-        self.bets[0] = 50
+        self.bets[0] = 100
         self.bets[1] = 100
         
         self.active = arguments.ByteTensor(game_settings.player_count).fill_(1)
@@ -57,7 +57,8 @@ class GameState(object):
         self.max_no_limit_raise_to = arguments.stack
         
         # deal cards
-        self.card_stack = [i for i in range(52)]
+        # self.card_stack = list(range(game_settings.card_count,0,-1))
+        self.card_stack = list(range(game_settings.card_count))
         random.shuffle(self.card_stack)
         self._deal_hole()
         
@@ -75,7 +76,7 @@ class GameState(object):
                 assert(self.max_bet == arguments.stack)
                 self.active[self.current_player] = 0
                 self.allin[self.current_player] = 1
-        
+            self.action_string += 'c'
          #if current player folded -> not active
 
         elif action.atype == constants.actions.fold:
@@ -84,7 +85,7 @@ class GameState(object):
 
             self.fold[self.current_player] = 1
 
-
+            self.action_string += 'f'
 
         else: # must be a raise action
 
@@ -108,13 +109,13 @@ class GameState(object):
 
             # if current player raised to stack size -> not active
 
-            if action.amount == arguments.stack:
-
+            if action.amount >= arguments.stack:
+                assert(action.amount == arguments.stack)
                 self.active[self.current_player] = 0
 
                 self.allin[self.current_player] = 1
 
-
+            self.action_string += 'r' + str(action.amount)
 
         # if all players choose all in, then game ends, which no active players
 
@@ -134,7 +135,7 @@ class GameState(object):
 
             if p:
 
-                amount_set.add(amount)
+                amount_set.add(amount.item())
 
         next_street_reaching_flag = len(amount_set) == 1 and self.call_number == game_settings.player_count - self.fold.sum()
 
@@ -185,12 +186,9 @@ class GameState(object):
                     self._deal_board(self.street)
 
         else:
-
             # we are still at current street
 
             # update {current player}, find next active player
-
-
 
             # if more than one active player left, find next active player
 
@@ -238,7 +236,6 @@ class GameState(object):
     # split betting string into single betting actions
 
     # if rd=None, by default, handle betting string of all streets
-
     def get_betting_action(self, rd=None):
 
         pattern = re.compile(r'r\d+|f|c')
@@ -278,29 +275,46 @@ class GameState(object):
     # return the ByteTensor of 0 and 1 , 1 means the winner 
     # @show_player bytetensor which 1 indicts which player need to showdown
     def _get_showdown_winner(self, show_player):
+#        print('game_state._get_showdown_winner')
         assert(self.terminal)
         # set board
         board = (c_int * game_settings.board_card_count)()
+        board_size = c_int(sum(game_settings.board_card_num))
         for i in range(game_settings.board_card_count):
+            assert(self.board[i] >= 0)
             board[i] = self.board[i]
         # set hole
-        hole = ((c_int * 2) * game_settings.player_count)()
-        for i in range(game_settings.player_count):
-            for j in range(2):
-                hole[i][j] = self.hole[i][j]
+        if game_settings.private_count > 1:
+            hole = ((c_int * game_settings.private_count) * game_settings.player_count)()
+            for i in range(game_settings.player_count):
+                for j in range(game_settings.private_count):
+                    hole[i][j] = self.hole[i][j]
+        elif game_settings.private_count == 1:
+            hole = (c_int * game_settings.player_count)()
+            for i in range(game_settings.player_count):
+                hole[i] = self.hole[i][0]
+        else:
+            assert (False)
         # init hs
         hs = (c_int * game_settings.player_count)()
         # hs store the hand strength
-        dll.evalShowdown(board, hole, game_settings.player_count, hs)
+        if game_settings.private_count == 1:
+            dll.evalShowdown_1(board, board_size, hole, game_settings.player_count, hs)
+        else:
+            dll.evalShowdown(board, board_size, hole, game_settings.player_count, hs)
         
         hst = arguments.LongTensor(game_settings.player_count)
         for i in range(game_settings.player_count):
            hst[i] = hs[i]
+        # print(self.board,self.hole,hst)
+        del board
+        del hole
+        del hs
         return hst == hst[show_player].max()
   
     def _deal_hole(self):
         for i in range(game_settings.player_count):
-            for j in range(2):
+            for j in range(game_settings.private_count):
                 self.hole[i][j] = self.card_stack.pop()
     
     # deal card by street
@@ -314,7 +328,7 @@ class GameState(object):
         
     def get_terminal_value(self):
         assert(self.terminal)
-        terminal_value = arguments.Tensor(game_settings.player_count).fill_(0)
+        terminal_value = arguments.IntTensor(game_settings.player_count).fill_(0)
         max_bet = self.bets.max()
         sum_bet = self.bets.sum()
         show_player = (max_bet == self.bets)
@@ -327,7 +341,7 @@ class GameState(object):
             for street in range(self.street + 1, constants.streets_count):
                 self._deal_board(street)
             winner = self._get_showdown_winner(show_player)
-            terminal_value[winner] = self.bets.sum() / winner.sum()
+            terminal_value[winner] = self.bets.sum() / winner.sum().item()
         else:
             assert(True)
         return terminal_value

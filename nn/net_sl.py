@@ -21,6 +21,8 @@ from torch.autograd import Variable
 from torch.distributions import Categorical
 from torch.nn.init import normal, calculate_gain, kaiming_normal
 
+from sklearn.metrics import log_loss
+
 import Settings.arguments as arguments
 import Settings.game_settings as game_settings
 
@@ -33,8 +35,8 @@ Tensor = FloatTensor
 
 def weights_init(m):
     if isinstance(m, nn.Linear):
-        normal(m.weight.data,std=0.1)
-        normal(m.bias.data,std=0.1)
+        normal(m.weight.data,mean=0.3, std=0.1)
+        normal(m.bias.data,mean=0.0, std=0.1)
 
 def reservoir_sample(memory, K):
     data = memory.memory
@@ -54,7 +56,7 @@ def reservoir_sample(memory, K):
 class SLNet(nn.Module):
     def __init__(self):
         super(SLNet, self).__init__()
-        self.fc1 = nn.Linear(28,64)
+        self.fc1 = nn.Linear(70,64)
         self.fc1_bn = nn.BatchNorm1d(64)
         self.fc2 = nn.Linear(64,64)
         self.fc2_bn = nn.BatchNorm1d(64)
@@ -65,11 +67,11 @@ class SLNet(nn.Module):
         
     def forward(self, x):
         x = self.fc1(x)
-        x = F.dropout(x, p=0.5)
+        x = F.dropout(x, p=0.2)
         x = F.relu(self.fc1_bn(x))
 #        x = F.relu(x)
         x = self.fc2(x)
-        x = F.dropout(x, p=0.5)
+        x = F.dropout(x, p=0.2)
         x = F.relu(self.fc2_bn(x))
 #        x = F.relu(x)
         x = self.fc3(x)
@@ -79,7 +81,20 @@ class SLNet(nn.Module):
         output = self.output(x)
         output = self.logsoftmax(output)
         return output
-    
+
+    def forward_fc(self, x):
+        x = self.fc1(x)
+        x = F.dropout(x, p=0.2)
+        x = F.relu(self.fc1_bn(x))
+        x = self.fc2(x)
+        x = F.dropout(x, p=0.2)
+        x = F.relu(self.fc2_bn(x))
+        x = self.fc3(x)
+        x = F.dropout(x, p=0.2)
+        x = F.relu(self.fc3_bn(x))
+        return x
+
+
 Transition = namedtuple('Transition',
                         ('state', 'policy'))
 
@@ -147,8 +162,9 @@ class SLOptim:
             
         
             
-        self.optimizer = optim.Adam(self.model.parameters(),lr=0.0001,weight_decay=0.0005)
-        self.memory = Memory(100000)
+        # self.optimizer = optim.Adam(self.model.parameters(),lr=0.00001,weight_decay=0.0005)
+        self.optimizer = optim.Adam(self.model.parameters(), lr=1e-4, weight_decay=0.0001)
+        self.memory = Memory(10000)
         self.loss = nn.NLLLoss()
         
         
@@ -176,6 +192,8 @@ class SLOptim:
     
     
     def plot_error_vis(self, step):
+        if self.steps_done == 0:
+            return 
         if not self.viz:
             import visdom
             self.viz = visdom.Visdom()
@@ -217,7 +235,8 @@ class SLOptim:
     
 
         state_batch = Variable(torch.cat(batch.state))
-        excepted_policy_batch = Variable(torch.cat(batch.policy))
+        with torch.no_grad():
+            excepted_policy_batch = Variable(torch.cat(batch.policy))
     
         policy_batch = self.model(state_batch)
         
@@ -232,11 +251,28 @@ class SLOptim:
 #        print(self.current_sum)
         self.current_sum = output.data.item()
 #        print(self.current_sum)
+#         if self.current_sum > 0.8 and self.steps_done > 200:
+            # print(excepted_policy_batch)
 
         # Optimize the model
         self.optimizer.zero_grad()
         output.backward()
         for param in self.model.parameters():
-            param.grad.data.clamp_(-1, 1)
+            param.grad.data.clamp_(0, 1)
         self.optimizer.step()
-    
+
+    def test(self, batch_size=100):
+        self.model.eval()
+        if arguments.reservoir:
+            transitions = reservoir_sample(self.memory, batch_size)
+        else:
+            transitions = self.memory.sample(batch_size)
+
+        batch = Transition(*zip(*transitions))
+
+        state_batch = Variable(torch.cat(batch.state))
+        excepted_policy_batch = Variable(torch.cat(batch.policy))
+
+        policy_batch = self.model(state_batch)
+
+        log_loss()

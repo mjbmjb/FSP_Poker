@@ -2,8 +2,14 @@ from random import randint
 
 class CardTool(object):
 
-    rank = ['2', '3', '4', '5', '6', '7', '8', '9', 'T', 'J', 'Q', 'K', 'A']
-    suit = ['c', 'd', 'h', 's']
+    # rank = ['2', '3', '4', '5', '6', '7', '8', '9', 'T', 'J', 'Q', 'K', 'A']
+    # suit = ['c', 'd', 'h', 's']
+
+    rank = [ 'T', 'J', 'Q', 'K', 'A']
+    suit = ['h', 's']
+
+#    rank = ['A', 'K', 'Q', 'J', 'T', '9', '8', '7', '6', '5', '4', '3', '2']
+#     suit = ['h', 's', 'c', 'd']
 
     # construct a dict key='ranksuit' value in 0-51
     card_dict ={}
