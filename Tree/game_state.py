@@ -45,7 +45,9 @@ class GameState(object):
         self.active = arguments.ByteTensor(game_settings.player_count).fill_(1)
         self.fold = arguments.ByteTensor(game_settings.player_count).fill_(0)
         self.allin = arguments.ByteTensor(game_settings.player_count).fill_(0)
-        self.action_taken = arguments.ByteTensor(game_settings.player_count).fill_(0)
+        self.action_taken = arguments.ByteTensor(game_settings.player_count,
+                                                 constants.streets_count,
+                                                 game_settings.raises_count * 2 + 1).fill_(0) # 1 means 1 fold
         self.pot = 150
         self.max_bet = 100
         self.call_number = 0
@@ -77,6 +79,7 @@ class GameState(object):
                 self.active[self.current_player] = 0
                 self.allin[self.current_player] = 1
             self.action_string += 'c'
+            self._his_add('c')
          #if current player folded -> not active
 
         elif action.atype == constants.actions.fold:
@@ -86,6 +89,7 @@ class GameState(object):
             self.fold[self.current_player] = 1
 
             self.action_string += 'f'
+            self._his_add('f')
 
         else: # must be a raise action
 
@@ -116,10 +120,11 @@ class GameState(object):
                 self.allin[self.current_player] = 1
 
             self.action_string += 'r' + str(action.amount)
+            self._his_add('r')
 
         # if all players choose all in, then game ends, which no active players
 
-        if self.active.sum() == 0:
+        if self.active.sum().item() == 0:
 
             self.terminal = True
 
@@ -192,7 +197,7 @@ class GameState(object):
 
             # if more than one active player left, find next active player
 
-            if self.active.sum() > 1:
+            if self.active.sum().item() > 1:
 
                 # game is not finished yet
 
@@ -206,13 +211,13 @@ class GameState(object):
 
                 self.current_player = next_player
 
-            elif self.active.sum() == 1:
+            elif self.active.sum().item() == 1:
 
                 # game may finish now
 
                 # if there is no all-in player, which means other players all folded, only one player left
 
-                if self.allin.sum() == 0:
+                if self.allin.sum().item() == 0:
 
                     # game ends
 
@@ -324,8 +329,23 @@ class GameState(object):
         for i in range(pre_board_num, board_num):
             self.board[i] = self.card_stack.pop()
         
-        
-        
+    def _his_add(self, type):
+        if type == 'r':
+            for i in range(game_settings.raises_count):
+                if self.action_taken[self.current_player,self.street,i].item() == 0:
+                    self.action_taken[self.current_player,self.street,i] = 1
+                    return
+        if type == 'c':
+            for i in range(game_settings.raises_count, game_settings.raises_count*2 - 1):
+                if self.action_taken[self.current_player,self.street,i].item() == 0:
+                    self.action_taken[self.current_player,self.street,i] = 1
+                    return
+        if type == 'f':
+            self.action_taken[self.current_player, self.street,-1] = 1
+            return
+
+        raise NotImplementedError
+
     def get_terminal_value(self):
         assert(self.terminal)
         terminal_value = arguments.IntTensor(game_settings.player_count).fill_(0)

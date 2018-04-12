@@ -5,6 +5,7 @@ Created on Fri Sep  1 06:52:02 2017
 
 @author: mjb
 """
+#%%
 import sys
 sys.path.append('../')
 
@@ -49,7 +50,7 @@ class SimEnv:
         
         vaild_action = self.get_vaild_action(state)
         
-        action_taken = action
+        action_taken = action.item()
         # if action is invaild
         if action_taken >= len(vaild_action):
             action_taken = len(vaild_action) - 1
@@ -67,10 +68,11 @@ class SimEnv:
         reward = arguments.Tensor([current_bet - next_state.bets[current_player]]) if not self.distributed else arguments.Tensor([0])
         
         terminal = next_state.terminal
+        terminal_value = None
         
         # TODO !!!!! here we store action not action_taken
 #        self.store_memory(current_player, state, action, next_state, reward)
-        action[0][0] = action_taken
+#         action[0][0] = action_taken
         if is_rl:
             self.store_memory(current_player, state, action, reward)
 #        assert(reward[0] < 10 and reward[0] > -10)
@@ -86,6 +88,9 @@ class SimEnv:
                         record[-1].reward.add_(terminal_value[record_player] - next_state.bets[record_player])
                     else:
                         record[-1].reward.add_(terminal_value[record_player])
+
+            # for multi agent
+            terminal_value = terminal_value - next_state.bets
                     
             # fix the small and big bind
             if len(self.memory[0]) > 0 and len(self.memory[1]) > 0 and not self.distributed:
@@ -95,9 +100,39 @@ class SimEnv:
 #                self.memory[1][-1].reward.sub_(0.6)
             next_state = None
         
-        return next_state, terminal, action_taken
-    
-    
+        return next_state, terminal, action_taken, terminal_value
+
+    # @return GameState: next_state, Boolean terminal, list(Tensor) state_a, list(LongTensor) state_a,
+    #         Tensor(player-N) reward
+    def step_r(self, start_state, agent):
+        # End if all the agents acted
+        n_acted = 0
+        n_active = start_state.active.sum()
+        # 暂时用全0替代吧 （log时为零，就没有梯度了） 现在用的是onehot
+        action_a = [arguments.Tensor(1,game_settings.actions_count).fill_(0)] * game_settings.player_count
+        state_a = [arguments.Tensor(1,arguments.dim_obs).fill_(0)] * game_settings.player_count
+        reward = arguments.LongTensor(game_settings.player_count).fill_(0)
+
+        state = start_state
+        while n_acted < n_active:
+            current_player = state.current_player
+            state_tensor = self.state2tensor(state)
+            action, onehot_a = agent.select_action(current_player,state_tensor)
+            next_state, terminal, action_taken, terminal_value = self.step(state, action, True)
+            # action[0][0] = action_taken
+            state_a[current_player] = state_tensor
+            action_a[current_player] = onehot_a
+
+            if terminal:
+                return next_state, terminal, state_a, action_a, terminal_value
+            state = next_state
+            n_acted += 1
+
+        return next_state, terminal, state_a, action_a, reward
+
+
+
+
     def store_memory(self, current_player, *args):
         self.memory[current_player].append(Transition(*args))
 
@@ -148,12 +183,13 @@ class SimEnv:
         # print(state.action_string)
 
         # transform street [0,1] means the first street # 4 /32 0-31
-        street_tensor = arguments.Tensor(constants.streets_count * 4).fill_(0)
-        street_tensor[int(state.street)*4: int(state.street+1)*4] = 1
+        # TODO make one bit to test the dimision of input
+        street_tensor = arguments.Tensor(constants.streets_count * 1).fill_(0)
+        street_tensor[int(state.street)* 1: int(state.street+1)* 1] = 1
       
         # position_tensor # /48 32-80
-        position_tensor = arguments.Tensor(game_settings.player_count * 4).fill_(0)
-        position_tensor[state.current_player*4: (state.current_player+1)*4] = 1
+        position_tensor = arguments.Tensor(game_settings.player_count * 1).fill_(0)
+        position_tensor[state.current_player* 1: (state.current_player+1)* 1] = 1
       
         # active tensor / 6 81-86
         active_tensor = arguments.Tensor(game_settings.player_count)
@@ -172,7 +208,10 @@ class SimEnv:
                 if state.bets[i] < arguments.pot_times[j] * pot_size:
                     pot_tensor[i * len(arguments.pot_times) + j] = 1
                     break
-      
+
+        # betting history
+        betting_his = state.action_taken.view(-1).type(arguments.Tensor)
+
 #      print(node.bets)
 #      print(bet_player_tensor)
 #      print(bet_oppo_tensor)
@@ -185,10 +224,11 @@ class SimEnv:
         #transform hand strengen
         # street: 1-2 position 3 bets 4-5 private 
         return_tensor = torch.unsqueeze(torch.cat((street_tensor, position_tensor, active_tensor,
-                                         bet_tensor, pot_tensor, private_tensor, board_tensor,) , 0), 0)
+                                         bet_tensor, pot_tensor, betting_his, private_tensor, board_tensor,) , 0), 0)
         return return_tensor
         
     def process_log(self, state, real_next_node, action, reward):
+
         node = state.node
         with open('state_action.log','a') as fout:
             fout.write('player: ' + str(node.current_player) + '\n' +
@@ -197,21 +237,29 @@ class SimEnv:
                        'actions: ' + str(action[0][0]) + '\n'
                        'rewards:' + str(reward) + '\n'+
                        'terminal: ' + str(real_next_node.terminal) + '\n\n')
-    
+#%%
 if __name__ == '__main__':
     env = SimEnv()
     call = Action(atype=constants.actions.ccall,amount=0)
     rrasie = Action(atype=constants.actions.rraise,amount=500)
     fold = Action(atype=constants.actions.fold,amount=0)
-    
+
 
     state = GameState()
     terminal = state.terminal
-    
-    while not terminal:
-        action_list = env.get_vaild_action(state)
-        print(action_list)
-        next_state, terminal, action= env.step(state,1)
-        state = next_state
-        
+
+    state_tensor = env.state2tensor(state)
+    #%%
+    t = torch.stack([state_tensor,state_tensor])
+    from nn.maddpg import MADDPG
+    maddpg = MADDPG()
+    a = maddpg.select_action(t)
+
+# while not terminal:
+#     action_list = env.get_vaild_action(state)
+#     print(action_list)
+#     env.step_r(state, 1)
+#     next_state, terminal, action= env.step(state,torch.LongTensor([[1]]))
+#     state = next_state
+
  

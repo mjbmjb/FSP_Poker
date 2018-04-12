@@ -56,24 +56,23 @@ def reservoir_sample(memory, K):
 class SLNet(nn.Module):
     def __init__(self):
         super(SLNet, self).__init__()
-        self.fc1 = nn.Linear(70,64)
-        self.fc1_bn = nn.BatchNorm1d(64)
-        self.fc2 = nn.Linear(64,64)
-        self.fc2_bn = nn.BatchNorm1d(64)
-        self.fc3 = nn.Linear(64,64)
-        self.fc3_bn = nn.BatchNorm1d(64)
-        self.output = nn.Linear(64,5)
+        self.fc1 = nn.Linear(133,512)
+        self.fc1_bn = nn.BatchNorm1d(512)
+        # self.fc2 = nn.Linear(64,64)
+        # self.fc2_bn = nn.BatchNorm1d(64)
+        self.fc3 = nn.Linear(512,512)
+        self.fc3_bn = nn.BatchNorm1d(512)
+        self.output = nn.Linear(512,5)
         self.logsoftmax = nn.LogSoftmax()
         
     def forward(self, x):
         x = self.fc1(x)
         x = F.dropout(x, p=0.2)
         x = F.relu(self.fc1_bn(x))
-#        x = F.relu(x)
-        x = self.fc2(x)
-        x = F.dropout(x, p=0.2)
-        x = F.relu(self.fc2_bn(x))
-#        x = F.relu(x)
+#         x = self.fc2(x)
+#         x = F.dropout(x, p=0.2)
+#         x = F.relu(self.fc2_bn(x))
+
         x = self.fc3(x)
         x = F.dropout(x, p=0.2)
         x = F.relu(self.fc3_bn(x))
@@ -86,9 +85,9 @@ class SLNet(nn.Module):
         x = self.fc1(x)
         x = F.dropout(x, p=0.2)
         x = F.relu(self.fc1_bn(x))
-        x = self.fc2(x)
-        x = F.dropout(x, p=0.2)
-        x = F.relu(self.fc2_bn(x))
+        # x = self.fc2(x)
+        # x = F.dropout(x, p=0.2)
+        # x = F.relu(self.fc2_bn(x))
         x = self.fc3(x)
         x = F.dropout(x, p=0.2)
         x = F.relu(self.fc3_bn(x))
@@ -164,7 +163,7 @@ class SLOptim:
             
         # self.optimizer = optim.Adam(self.model.parameters(),lr=0.00001,weight_decay=0.0005)
         self.optimizer = optim.Adam(self.model.parameters(), lr=1e-4, weight_decay=0.0001)
-        self.memory = Memory(10000)
+        self.memory = Memory(50000)
         self.loss = nn.NLLLoss()
         
         
@@ -186,10 +185,11 @@ class SLOptim:
         policy = torch.exp(policy)
 #        assert((policy >= 0).sum() == 7)
         m = Categorical(policy)
-        action = arguments.LongTensor(1,1)
-        action[0] = m.sample()
+        action = m.sample().view((1, 1))
+        if arguments.gpu:
+            return action.cuda()
         return action
-    
+
     
     def plot_error_vis(self, step):
         if self.steps_done == 0:
@@ -258,7 +258,7 @@ class SLOptim:
         self.optimizer.zero_grad()
         output.backward()
         for param in self.model.parameters():
-            param.grad.data.clamp_(0, 1)
+            param.grad.data.clamp_(-1, 1)
         self.optimizer.step()
 
     def test(self, batch_size=100):

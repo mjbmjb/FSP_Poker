@@ -20,19 +20,24 @@ WORK_PATH = '/home/carc/mjb/deepStack/'
 # whether to run on GPU
 gpu = torch.cuda.is_available()
 cpu_store = False
-multi_agent = False
+multi_agent = True
 # list of pot-scaled bet sizes to use in tree
 
 # dict of model
-# rl_model = 'reinforce'
-rl_model = 'dqn'
+# rl_model = 'dqn'
+rl_model = 'maddpg'
 sl_model = 'mlr'
+
+# culcate by how many step per episoid
+rl_update = 20
+sl_update = 40
 
 # params for rl
 gamma = 0.999
 
+dim_obs = 133
 # params for sl
-sl_start = 1000
+sl_start = 500
 
 # @field bet_sizing
 bet_sizing = [1]
@@ -66,13 +71,10 @@ loss_F = F.nll_loss
 loss = nn.MSELoss()
 dqn_init_policy = Tensor([0.01,0.50,0.45,0.01,0.01,0.01,0.01])
 reservoir = False
-# culcate by how many step per episoid
-rl_update = 20
-sl_update = 40
 # how often to save the model during training
 save_epoch = 5000
 # how many epochs to train for
-epoch_count = 50000
+epoch_count = 200000
 # how many solved poker situations are generated for use as training examples
 train_data_count = 100
 # how many solved poker situations are generated for use as validation examples

@@ -24,7 +24,7 @@ board_card_num = [0,1]
 # the number of players in the game 
 player_count = 3
 # mjb the num of raises
-raises_count = 4
+raises_count = 6
 # mjb the num of actions
 actions_count = 7
 # mjb private

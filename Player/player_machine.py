@@ -29,8 +29,8 @@ class PlayerMachine:
     def load_model(self, iter_time, is_table=False):
         iter_str = str(iter_time)
         # load rl model (only the net)
-#        self.dqn_optim.model.load_state_dict(torch.load('../Data/Model/Iter:' + iter_str + '.rl'))
-#        self.dqn_optim.target_net.load_state_dict(self.dqn_optim.model.state_dict())
+        self.dqn_optim.model.load_state_dict(torch.load('../Data/Model/Iter:' + iter_str + '_0_'+ '.rl'))
+        self.dqn_optim.target_net.load_state_dict(self.dqn_optim.model.state_dict())
         
         # load sl model
         if is_table:
