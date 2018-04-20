@@ -24,6 +24,7 @@ player_machine.load_model(argv[3])
 
 acpc_game = SixACPCGame(None)
 acpc_game.connect(argv[1], int(argv[2]))
+print('connection finished')
 
 last_state = None
 last_node = None

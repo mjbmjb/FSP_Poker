@@ -15,10 +15,12 @@ import torch.nn.functional as F
 
 torch.set_default_tensor_type('torch.FloatTensor')
 
+torch.manual_seed(1234)
 #WORK_PATH = '/home/mjb/Nutstore/deepStack'
 WORK_PATH = '/home/carc/mjb/deepStack/'
 # whether to run on GPU
 gpu = torch.cuda.is_available()
+# gpu = False
 cpu_store = False
 multi_agent = True
 # list of pot-scaled bet sizes to use in tree
@@ -33,7 +35,7 @@ rl_update = 20
 sl_update = 40
 
 # params for rl
-gamma = 0.999
+gamma = 0.99
 
 dim_obs = 133
 # params for sl
@@ -72,7 +74,7 @@ loss = nn.MSELoss()
 dqn_init_policy = Tensor([0.01,0.50,0.45,0.01,0.01,0.01,0.01])
 reservoir = False
 # how often to save the model during training
-save_epoch = 5000
+save_epoch = 10000
 # how many epochs to train for
 epoch_count = 200000
 # how many solved poker situations are generated for use as training examples
@@ -89,7 +91,7 @@ sl_update_num = 128
 
 #load model
 load_model = False
-load_model_num = 100000
+load_model_num = 60000
 
 muilt_gpu = False
 

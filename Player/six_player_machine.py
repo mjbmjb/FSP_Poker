@@ -41,7 +41,9 @@ class SixPlayerMachine:
         for i in range(game_settings.player_count):
             # load maddpg
             if arguments.rl_model == 'maddpg':
-                self.maddpg.actors[i].load_state_dict(torch.load('../Data/Model/Iter:' + iter_str + '_' + str(i) + '.actor'))
+                self.maddpg.load("../Data/Model/Iter:" + iter_str)
+                self.maddpg.steps_done = iter_time * 100
+                self.net_sl[i].model.load_state_dict(torch.load('../Data/Model/Iter:' + iter_str + '_' + str(0) +'_' + '.sl'))
             else:
                 # TODO fix i
                 self.net_sl[i].model.load_state_dict(torch.load('../Data/Model/Iter:' + iter_str + '_' + str(0) +'_' + '.sl'))

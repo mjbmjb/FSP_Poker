@@ -17,6 +17,8 @@ os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 # import cProfilev
 
 from nn.sim_env import SimEnv
+from nn.make_env import make_env
+
 from nn.dqn import DQNOptim
 from nn.reinforce import ReinforceOptim
 from nn.maddpg import MADDPG
@@ -32,10 +34,12 @@ import numpy as np
 import Settings.arguments as arguments
 import Settings.constants as constants
 import Settings.game_settings as game_settings
+from torch.autograd import Variable
 from itertools import count
 from torch.nn.utils.convert_parameters import vector_to_parameters, parameters_to_vector
 
 from collections import namedtuple
+import datetime
 
 num_episodes = 10
 env = SimEnv(True)
@@ -47,8 +51,8 @@ rl_model = {'dqn': DQNOptim, 'reinforce': ReinforceOptim, 'maddpg': MADDPG}
 sl_model = {'mlr': SLOptim}
 
 Agents = []
-n_agent = game_settings.player_count if arguments.multi_agent else 1
-for i in range(n_agent):
+num_agent = game_settings.player_count if arguments.multi_agent else 1
+for i in range(num_agent):
     Agents.append(Agent(rl=rl_model[arguments.rl_model](), sl=sl_model[arguments.sl_model](), ID=i))
 
 
@@ -286,11 +290,11 @@ def finish_episod(maddpg, record_a):
     # store the record to memory
     for i, record in enumerate(record_a):
         s,a,s1,r = record
-        r = r.type(arguments.Tensor) / arguments.stack
+        r = r.type(arguments.Tensor) / (arguments.stack*0.5)
         if i + 1 < len(record_a):
             s1 = record_a[i + 1].states
         maddpg.memory.push(s,a,s1,r)
-
+    maddpg.episode_done += 1
     # c_loss, a_loss = maddpg.update_policy()
     # return c_loss, a_loss
 
@@ -298,11 +302,11 @@ def mul_train():
     import time
     time_start = time.time()
     table_update_num = 0
+    maddpg = MADDPG()
+    sl = SLOptim(state_dim=133)
 
     if arguments.load_model:
-        load_model(arguments.load_model_num)
-
-    maddpg = MADDPG()
+        maddpg.load("../Data/Model/Iter:" + str(arguments.load_model_num))
 
     for i_episode in range(arguments.epoch_count + 1):
         env.reset()
@@ -311,7 +315,7 @@ def mul_train():
         # print('episode:%d' % i_episode)
         for t in count():
             # Agent = Agents[state.current_player]
-            next_state, done, state_a, action_a ,reward = env.step_r(state, maddpg)
+            next_state, done, state_a, action_a ,reward = env.step_r(state, maddpg, sl)
 
             state_a = torch.stack(state_a).squeeze(1)
             action_a = torch.stack(action_a).squeeze(1)
@@ -321,8 +325,11 @@ def mul_train():
 
             if done:
                 finish_episod(maddpg, record_a)
-                if i_episode % arguments.rl_update:
+                maddpg.episode_done += 1
+                if i_episode % arguments.rl_update == 0:
                     maddpg.update_policy()
+                if i_episode % arguments.sl_update == 0:
+                    sl.optimize_model()
 
                 if i_episode % 100 == 0:
                     print('episode:%d memory:%d' % (i_episode, len(maddpg.memory.memory)))
@@ -330,20 +337,180 @@ def mul_train():
 
                     if maddpg.episode_done > maddpg.episodes_before_train:
                         maddpg.plot_error_vis(i_episode)
+                        sl.plot_error_vis(i_episode)
                 # record_reward(Agents, env, Reward)
                 if i_episode != 0 and i_episode % arguments.save_epoch == 0:
                     maddpg.save("../Data/Model/Iter:" + str(i_episode))
+                    torch.save(sl.model.state_dict(), "../Data/Model/Iter:" +
+                                                             str(i_episode) + '_' + str(0) + '_' + '.sl')
                 break
 
-
             state = next_state
-
-        maddpg.episode_done += 1
 #    dqn_optim.plt.ioff()
 #    dqn_optim.plt.show()
+# @profile
+def pad2tensor(obs, pad_dim):
+    return_obs = []
+    for ob, dim in zip(obs, pad_dim):
+        npob = np.pad(ob, (0,dim), 'constant', constant_values=0)
+        return_obs.append(torch.from_numpy(npob).type(arguments.Tensor))
+    return torch.stack(return_obs)
+# @profile
+def gym_train():
+
+    table_update_num = 0
+    # simple | simple_adversary | simple_crypto | simple_push | simple_reference |
+    # simple_speaker_listener | simple_spread | simple_tag | simple_world_comm
+    env = make_env('simple_tag', shape=True)
+    n_agent = env.n
+    obs_dim = np.array([shape.shape[0] for shape in env.observation_space])
+    act_dim = env.action_space[0].n
+    pad_dim = obs_dim.max() - obs_dim
+
+    maddpg = MADDPG(n_agents=n_agent,
+                    dim_obs=obs_dim.max(),
+                    dim_act=act_dim,
+                    episodes_before_train=50)
+    sl = SLOptim(state_dim=obs_dim.max())
+
+    import visdom
+    vis = visdom.Visdom()
+    win = None
+
+    totalTime = 0
+
+    max_steps = 100
+    aver = np.zeros((n_agent,))
+
+    if arguments.load_model:
+        maddpg.load("../Data/Model/(gym)Iter:" + str(arguments.load_model_num))
+        # TODO remember to remove it when train
+        maddpg.steps_done = arguments.load_model_num * 100
+
+    for i_episode in range(arguments.epoch_count + 1):
+        startTime = datetime.datetime.now()
+
+        reward_record = []
+        adversaries_reward_record = []
+        agent_reward_record = []
+        total_reward = 0.0
+        adversaries_reward = 0.0
+        agent_reward = 0.0
+        rr = np.zeros((n_agent,))
+
+        obs = env.reset()
+        # convert obs to list(Tensor)
+        obs = pad2tensor(obs, pad_dim)
+
+        steps = 0
+        # print('episode:%d' % i_episode)
+        for t in count():
+
+            is_rl = random.random() > arguments.eta  # 0 sl 1 rl
+            has_sl = arguments.eta != 0 # 是否用了FSP，不用FSP就设置eta=0（全部rl）
+
+            if is_rl:
+                action = []
+                for i in range(n_agent):
+                    # a_n 是数值的action,sl需要
+                    a_n, a = maddpg.select_action(i, Variable(obs[i]).unsqueeze(0))
+                    action.append(a.squeeze())
+
+                    # 不不用FSP就不push了
+                    if has_sl:
+                        for i in range(n_agent):
+                            # 这里我需要数值的action
+                            sl.memory.push(obs[i].unsqueeze(0),a_n)
+
+            else:
+                action = [sl.select_action(obs[i].unsqueeze(0))[1].squeeze() for i in range(n_agent)]
+
+            obs_, reward, done, info = env.step(action)
+            # convert obs to list(Tensor)
+            obs_ = pad2tensor(obs_, pad_dim)
+            action_a = torch.stack(action)
+            reward_a = arguments.Tensor(reward)
+            # print(reward)
+            # 碰到就是最终回报
+            # if reward_a[0:3].sum().item() > 1:
+            #     # print('steps_____________%d'% steps)
+            #     maddpg.memory.push(obs, action_a, None, reward_a)
+            # else:
+            maddpg.memory.push(obs, action_a, obs_, reward_a)
+
+            reward = np.array(reward)
+            # total_reward += reward.sum()
+            adversaries_reward += reward[0:3].sum()
+            # print(adversaries_reward)
+            agent_reward = reward[3:].sum()
+            rr += reward
+
+            steps += 1
+
+            # if steps % 4 == 0:
+            #     maddpg.update_policy()
+
+            if steps >= max_steps or all(done):
+                # if i_episode % arguments.rl_update == 0:
+                maddpg.update_policy()
+                if has_sl : sl.optimize_model()
+                break
+            if i_episode % 100 == 0 and arguments.load_model: # show every 50 episode
+                env.render()
+            obs = obs_
+
+        # env.render()
+
+        # if i_episode % 100 == 0:
+        print('episode:%d memory:%d' % (i_episode, len(maddpg.memory.memory)))
+        # print_dead(maddpg.actors[0])
+
+        if maddpg.episode_done > maddpg.episodes_before_train:
+            maddpg.plot_error_vis(i_episode)
+        # record_reward(Agents, env, Reward)
+        if i_episode != 0 and i_episode % arguments.save_epoch == 0:
+            maddpg.save("../Data/Model/(gym)Iter:" + str(i_episode))
+
+        maddpg.episode_done += 1
+
+        endTime = datetime.datetime.now()
+        runTime = (endTime - startTime).seconds
+        totalTime = totalTime + runTime
+        # print('Episode:%d,reward = %f' % (i_episode, total_reward))
+        print('Episode:%d,adversaries_reward = %f' % (i_episode, adversaries_reward))
+        print('Episode:%d,agent_reward = %f' % (i_episode, agent_reward))
+        print('this episode run time:' + str(runTime))
+        print('totalTime:' + str(totalTime))
+        reward_record.append(total_reward)
+        adversaries_reward_record.append(adversaries_reward)
+        agent_reward_record.append(agent_reward)
+        aver = (i_episode / (i_episode + 1.0)) * aver + (1 / (i_episode + 1.0)) * rr
+
+        if win is None:
+            win = vis.line(X=np.arange(i_episode, i_episode + 1),
+                           Y=np.array([aver[:-1]]),
+                           opts=dict(
+                               ylabel='Reward',
+                               xlabel='Episode',
+                               title='MADDPG on MOE\n' +
+                                     'agent=%d' % n_agent +
+                                     ', sensor_range=0.2\n',
+                               legend= ['Agent-%d' % i for i in range(n_agent-1)]))
+        else:
+            vis.line(X=np.array(
+                [np.array(i_episode).repeat(n_agent-1)]),
+                Y= np.array([aver[:-1]]),
+                win=win,
+                update='append')
+
+    env.close()
+#    dqn_optim.plt.ioff()
+#    dqn_optim.plt.show()
+
 
 if __name__ == '__main__':
     if arguments.rl_model == 'dqn':
         single_train()
     else:
-        mul_train()
+        # mul_train()
+        gym_train()

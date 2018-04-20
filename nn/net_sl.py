@@ -54,9 +54,9 @@ def reservoir_sample(memory, K):
     return sample
 
 class SLNet(nn.Module):
-    def __init__(self):
+    def __init__(self, dim=arguments.dim_obs):
         super(SLNet, self).__init__()
-        self.fc1 = nn.Linear(133,512)
+        self.fc1 = nn.Linear(dim,512)
         self.fc1_bn = nn.BatchNorm1d(512)
         # self.fc2 = nn.Linear(64,64)
         # self.fc2_bn = nn.BatchNorm1d(64)
@@ -144,11 +144,11 @@ class SLOptim:
     #    episode.
     #
     
-    def __init__(self):
+    def __init__(self,state_dim=arguments.dim_obs):
         
         self.BATCH_SIZE = 64
         
-        self.model = SLNet()
+        self.model = SLNet(dim=state_dim)
         
         # init weight and baise
         self.model.apply(weights_init)
@@ -186,9 +186,10 @@ class SLOptim:
 #        assert((policy >= 0).sum() == 7)
         m = Categorical(policy)
         action = m.sample().view((1, 1))
+        one_hot = torch.eye(policy.size(1)).cuda()[action].squeeze(1)
         if arguments.gpu:
-            return action.cuda()
-        return action
+            return action.cuda(), one_hot
+        return action , one_hot.cpu()
 
     
     def plot_error_vis(self, step):
@@ -236,7 +237,7 @@ class SLOptim:
 
         state_batch = Variable(torch.cat(batch.state))
         with torch.no_grad():
-            excepted_policy_batch = Variable(torch.cat(batch.policy))
+            excepted_policy_batch = Variable(torch.cat(batch.policy)).squeeze()
     
         policy_batch = self.model(state_batch)
         

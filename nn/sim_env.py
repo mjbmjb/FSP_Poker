@@ -104,7 +104,7 @@ class SimEnv:
 
     # @return GameState: next_state, Boolean terminal, list(Tensor) state_a, list(LongTensor) state_a,
     #         Tensor(player-N) reward
-    def step_r(self, start_state, agent):
+    def step_r(self, start_state, rl, sl, eta=arguments.eta):
         # End if all the agents acted
         n_acted = 0
         n_active = start_state.active.sum()
@@ -117,8 +117,18 @@ class SimEnv:
         while n_acted < n_active:
             current_player = state.current_player
             state_tensor = self.state2tensor(state)
-            action, onehot_a = agent.select_action(current_player,state_tensor)
+
+            is_rl = random.random() > arguments.eta # 0 sl 1 rl
+            if is_rl:
+                action, onehot_a = rl.select_action(current_player,state_tensor)
+            else:
+                action, onehot_a = sl.select_action(state_tensor)
+
             next_state, terminal, action_taken, terminal_value = self.step(state, action, True)
+
+            if is_rl:
+                sl.memory.push(state_tensor, action)
+
             # action[0][0] = action_taken
             state_a[current_player] = state_tensor
             action_a[current_player] = onehot_a
