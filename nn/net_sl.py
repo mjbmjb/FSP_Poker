@@ -41,14 +41,18 @@ def weights_init(m):
 def reservoir_sample(memory, K):
     data = memory.memory
     sample = []
-    for i,line in enumerate(data):
+    for i in range(len(memory.memory)):
+        if len(memory.memory) >= memory.capacity:
+            record = memory.memory[(i + memory.position) % memory.capacity]
+        else:
+            record = memory.memory[i]
         if i < K:
-            sample.append(line)
+            sample.append(record)
         elif i >= K and random.random() < K/float(i+1):
             replace = random.randint(0,len(sample)-1)
-            sample[replace] = line
-    memory.memory = []
-    memory.position = 0
+            sample[replace] = record
+    # memory.memory = []
+    # memory.position = 0
     
 #    print('sample sl len:%d'%len(sample))
     return sample
@@ -146,7 +150,7 @@ class SLOptim:
     
     def __init__(self,state_dim=arguments.dim_obs):
         
-        self.BATCH_SIZE = 64
+        self.BATCH_SIZE = 256
         
         self.model = SLNet(dim=state_dim)
         

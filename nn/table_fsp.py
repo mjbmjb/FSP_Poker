@@ -183,9 +183,6 @@ def main():
 #    dqn_optim.plt.ioff()
 #    dqn_optim.plt.show()
 
-if __name__ == '__main__':
-#    cProfile.run(main())
-    main()
 
 
             

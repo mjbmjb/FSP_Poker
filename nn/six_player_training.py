@@ -5,13 +5,11 @@ Created on Sat Sep  2 05:15:26 2017
 
 @author: mjb
 """
-
+import os
 import sys
-
-sys.path.append('../')
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 # sys.path.append('/home/carc/mjb/deepStack/')
 
-import os
 os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 
 # import cProfilev
@@ -29,8 +27,11 @@ from nn.maddpg import Experience as MADDPG_TRAN
 from Tree.game_state import GameState
 
 import random
-import torch
+import math
 import numpy as np
+import torch
+from torch import multiprocessing as mp
+
 import Settings.arguments as arguments
 import Settings.constants as constants
 import Settings.game_settings as game_settings
@@ -356,12 +357,12 @@ def pad2tensor(obs, pad_dim):
         return_obs.append(torch.from_numpy(npob).type(arguments.Tensor))
     return torch.stack(return_obs)
 # @profile
-def gym_train():
+def gym_maddpg_train():
 
     table_update_num = 0
     # simple | simple_adversary | simple_crypto | simple_push | simple_reference |
     # simple_speaker_listener | simple_spread | simple_tag | simple_world_comm
-    env = make_env('simple_tag', shape=True)
+    env = make_env('simple_spread')
     n_agent = env.n
     obs_dim = np.array([shape.shape[0] for shape in env.observation_space])
     act_dim = env.action_space[0].n
@@ -371,7 +372,7 @@ def gym_train():
                     dim_obs=obs_dim.max(),
                     dim_act=act_dim,
                     episodes_before_train=50)
-    sl = SLOptim(state_dim=obs_dim.max())
+    sl = [SLOptim(state_dim=obs_dim.max()) for _ in range(n_agent)]
 
     import visdom
     vis = visdom.Visdom()
@@ -379,13 +380,16 @@ def gym_train():
 
     totalTime = 0
 
-    max_steps = 100
+    max_steps = 300
     aver = np.zeros((n_agent,))
 
     if arguments.load_model:
         maddpg.load("../Data/Model/(gym)Iter:" + str(arguments.load_model_num))
+        for i in range(n_agent):
+            sl[i].model.load_state_dict(torch.load("../Data/Model/(gym)Iter:" +
+                       str(arguments.load_model_num) + '_' + str(i) + '_' + '.sl'))
         # TODO remember to remove it when train
-        maddpg.steps_done = arguments.load_model_num * 100
+        # maddpg.steps_done = arguments.load_model_num
 
     for i_episode in range(arguments.epoch_count + 1):
         startTime = datetime.datetime.now()
@@ -420,12 +424,13 @@ def gym_train():
                     if has_sl:
                         for i in range(n_agent):
                             # 这里我需要数值的action
-                            sl.memory.push(obs[i].unsqueeze(0),a_n)
+                            sl[i].memory.push(obs[i].unsqueeze(0),a_n)
 
             else:
-                action = [sl.select_action(obs[i].unsqueeze(0))[1].squeeze() for i in range(n_agent)]
+                action = [sl[i].select_action(obs[i].unsqueeze(0))[1].squeeze() for i in range(n_agent)]
 
-            obs_, reward, done, info = env.step(action)
+            np_action = [a.cpu().numpy() for a in action]
+            obs_, reward, done, info = env.step(np_action)
             # convert obs to list(Tensor)
             obs_ = pad2tensor(obs_, pad_dim)
             action_a = torch.stack(action)
@@ -440,9 +445,9 @@ def gym_train():
 
             reward = np.array(reward)
             # total_reward += reward.sum()
-            adversaries_reward += reward[0:3].sum()
+            adversaries_reward += reward[0:1].sum()
             # print(adversaries_reward)
-            agent_reward = reward[3:].sum()
+            agent_reward = reward[1:].sum()
             rr += reward
 
             steps += 1
@@ -453,7 +458,9 @@ def gym_train():
             if steps >= max_steps or all(done):
                 # if i_episode % arguments.rl_update == 0:
                 maddpg.update_policy()
-                if has_sl : sl.optimize_model()
+                if has_sl :
+                    for i in range(n_agent):
+                        sl[i].optimize_model()
                 break
             if i_episode % 100 == 0 and arguments.load_model: # show every 50 episode
                 env.render()
@@ -470,13 +477,19 @@ def gym_train():
         # record_reward(Agents, env, Reward)
         if i_episode != 0 and i_episode % arguments.save_epoch == 0:
             maddpg.save("../Data/Model/(gym)Iter:" + str(i_episode))
-
+            for i in range(n_agent):
+                torch.save(sl[i].model.state_dict(), "../Data/Model/(gym)Iter:" +
+                       str(i_episode) + '_' + str(i) + '_' + '.sl')
         maddpg.episode_done += 1
 
         endTime = datetime.datetime.now()
         runTime = (endTime - startTime).seconds
         totalTime = totalTime + runTime
+
+        eps_threshold = maddpg.EPS_END + (maddpg.EPS_START - maddpg.EPS_END) * \
+                        math.exp(-1. * maddpg.steps_done / maddpg.EPS_DECAY)
         # print('Episode:%d,reward = %f' % (i_episode, total_reward))
+        print("EPS: %f" % eps_threshold)
         print('Episode:%d,adversaries_reward = %f' % (i_episode, adversaries_reward))
         print('Episode:%d,agent_reward = %f' % (i_episode, agent_reward))
         print('this episode run time:' + str(runTime))
@@ -484,22 +497,22 @@ def gym_train():
         reward_record.append(total_reward)
         adversaries_reward_record.append(adversaries_reward)
         agent_reward_record.append(agent_reward)
-        aver = (i_episode / (i_episode + 1.0)) * aver + (1 / (i_episode + 1.0)) * rr
+        # aver = (i_episode / (i_episode + 1.0)) * aver + (1 / (i_episode + 1.0)) * rr
 
         if win is None:
             win = vis.line(X=np.arange(i_episode, i_episode + 1),
-                           Y=np.array([aver[:-1]]),
+                           Y=np.array([rr]),
                            opts=dict(
                                ylabel='Reward',
                                xlabel='Episode',
                                title='MADDPG on MOE\n' +
                                      'agent=%d' % n_agent +
                                      ', sensor_range=0.2\n',
-                               legend= ['Agent-%d' % i for i in range(n_agent-1)]))
+                               legend= ['Agent-%d' % i for i in range(n_agent)]))
         else:
             vis.line(X=np.array(
-                [np.array(i_episode).repeat(n_agent-1)]),
-                Y= np.array([aver[:-1]]),
+                [np.array(i_episode).repeat(n_agent)]),
+                Y= np.array([rr]),
                 win=win,
                 update='append')
 
@@ -507,10 +520,111 @@ def gym_train():
 #    dqn_optim.plt.ioff()
 #    dqn_optim.plt.show()
 
+# Global counter
+class Counter():
+  def __init__(self):
+    self.val = mp.Value('i', 0)
+    self.lock = mp.Lock()
+
+  def increment(self):
+    with self.lock:
+      self.val.value += 1
+
+  def value(self):
+    with self.lock:
+      return self.val.value
+
+from nn.acer import ActorCritic, AcerOptim, train as acer_train , test as acer_test
+
+def gym_acer_tarin():
+    # mp.set_start_method('spawn')
+    # BLAS setup
+    os.environ['OMP_NUM_THREADS'] = '1'
+    os.environ['MKL_NUM_THREADS'] = '1'
+
+    # Setup
+    # mp.set_start_method(platform.python_version()[0] == '3' and 'spawn' or 'fork')  # Force true spawning (not forking) if available
+    T = Counter()  # Global shared counter
+    # Create shared network
+    env = make_env('simple')
+
+    n_agent = env.n
+    obs_dim = np.array([shape.shape[0] for shape in env.observation_space])
+    act_dim = env.action_space[0].n
+    # pad_dim = obs_dim.max() - obs_dim
+    # env.close()
+
+    acer_optim = AcerOptim(obs_dim.max(), act_dim)
+
+    # acer_optim.train(0, T, env)
+
+     # Start validation agent
+    processes = []
+    p = mp.Process(target=test, args=(0, acer_optim, T))
+    p.start()
+    processes.append(p)
+
+
+    # Start training agents
+    for rank in range(1, arguments.num_process + 1):
+        p = mp.Process(target=train, args=(rank, acer_optim, T, env))
+        p.start()
+        processes.append(p)
+
+     # Clean up
+    for p in processes:
+        p.join()
+
 
 if __name__ == '__main__':
-    if arguments.rl_model == 'dqn':
-        single_train()
-    else:
-        # mul_train()
-        gym_train()
+    mp.set_start_method('spawn', force=True)
+    # # torch.manual_seed(1234)
+    # if arguments.rl_model == 'dqn':
+    #     single_train()
+    # else:
+    #     # mul_train()
+    #     # gym_maddpg_train()
+    #     gym_acer_tarin()
+
+
+    # mp.set_start_method('spawn')
+    # BLAS setup
+    os.environ['OMP_NUM_THREADS'] = '1'
+    os.environ['MKL_NUM_THREADS'] = '1'
+
+    # Setup
+    # mp.set_start_method(platform.python_version()[0] == '3' and 'spawn' or 'fork')  # Force true spawning (not forking) if available
+    T = Counter()  # Global shared counter
+    # Create shared network
+    env = make_env('simple')
+
+    n_agent = env.n
+    obs_dim = np.array([shape.shape[0] for shape in env.observation_space])
+    act_dim = env.action_space[0].n
+    # pad_dim = obs_dim.max() - obs_dim
+    # env.close()
+
+    acer_optim = AcerOptim(obs_dim.max(), act_dim)
+
+    if arguments.load_model:
+        acer_optim.shared_model.load_state_dict(torch.load(arguments.WORK_PATH + '/nn/model.pth'))
+        acer_optim.shared_average_model.load_state_dict(acer_optim.shared_model.state_dict())
+
+    # acer_train(0, acer_optim, T)
+
+    # Start validation agent
+    processes = []
+    p = mp.Process(target=acer_test, args=(0, acer_optim, T))
+    p.start()
+    processes.append(p)
+
+
+    # Start training agents
+    for rank in range(1, arguments.num_process + 1):
+        p = mp.Process(target=acer_train, args=(rank, acer_optim, T))
+        p.start()
+        processes.append(p)
+
+     # Clean up
+    for p in processes:
+        p.join()

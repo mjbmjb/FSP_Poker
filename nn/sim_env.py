@@ -248,28 +248,28 @@ class SimEnv:
                        'rewards:' + str(reward) + '\n'+
                        'terminal: ' + str(real_next_node.terminal) + '\n\n')
 #%%
-if __name__ == '__main__':
-    env = SimEnv()
-    call = Action(atype=constants.actions.ccall,amount=0)
-    rrasie = Action(atype=constants.actions.rraise,amount=500)
-    fold = Action(atype=constants.actions.fold,amount=0)
-
-
-    state = GameState()
-    terminal = state.terminal
-
-    state_tensor = env.state2tensor(state)
-    #%%
-    t = torch.stack([state_tensor,state_tensor])
-    from nn.maddpg import MADDPG
-    maddpg = MADDPG()
-    a = maddpg.select_action(t)
-
-# while not terminal:
-#     action_list = env.get_vaild_action(state)
-#     print(action_list)
-#     env.step_r(state, 1)
-#     next_state, terminal, action= env.step(state,torch.LongTensor([[1]]))
-#     state = next_state
+# if __name__ == '__main__':
+#     env = SimEnv()
+#     call = Action(atype=constants.actions.ccall,amount=0)
+#     rrasie = Action(atype=constants.actions.rraise,amount=500)
+#     fold = Action(atype=constants.actions.fold,amount=0)
+#
+#
+#     state = GameState()
+#     terminal = state.terminal
+#
+#     state_tensor = env.state2tensor(state)
+#     #%%
+#     t = torch.stack([state_tensor,state_tensor])
+#     from nn.maddpg import MADDPG
+#     maddpg = MADDPG()
+#     a = maddpg.select_action(t)
+#
+# # while not terminal:
+# #     action_list = env.get_vaild_action(state)
+# #     print(action_list)
+# #     env.step_r(state, 1)
+# #     next_state, terminal, action= env.step(state,torch.LongTensor([[1]]))
+# #     state = next_state
 
  

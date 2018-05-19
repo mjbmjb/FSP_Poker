@@ -19,7 +19,11 @@ from collections import namedtuple
 Action = namedtuple('Action', ['atype', 'amount'])
 
 from ctypes import cdll, c_int
-dll = cdll.LoadLibrary(arguments.WORK_PATH + "DLL/handstrength.so")
+import platform
+if platform.uname()[0] == 'Windows':
+    dll = cdll.LoadLibrary(arguments.WORK_PATH + "DLL/handstrength.dll")
+else:
+    dll = cdll.LoadLibrary(arguments.WORK_PATH + "DLL/handstrength.so")
 
 
 class GameState(object):
@@ -368,31 +372,31 @@ class GameState(object):
         
         
         
-if __name__ == '__main__':
-    state = GameState()
-    call = Action(atype=constants.actions.ccall,amount=0)
-    rrasie = Action(atype=constants.actions.rraise,amount=1000)
-    rrasie1 = Action(atype=constants.actions.rraise,amount=2000)
-    fold = Action(atype=constants.actions.fold,amount=0)
-    
-
-   
-    
-    state.do_action(call)
-    state.do_action(rrasie)
-    state.do_action(call)
-    state.do_action(fold)
-    print(state.street)
-    print(state.board)
-    for i in range(5):
-        state.do_action(call)
-    state.do_action(rrasie)
-    print(state.street)
-    print(state.board)
-    for i in range(5):
-        state.do_action(call)
-    print(state.street)
-    print(state.board)
-    state.do_action(fold)
-
-#    ter = state.get_terminal_value()
+# if __name__ == '__main__':
+#     state = GameState()
+#     call = Action(atype=constants.actions.ccall,amount=0)
+#     rrasie = Action(atype=constants.actions.rraise,amount=1000)
+#     rrasie1 = Action(atype=constants.actions.rraise,amount=2000)
+#     fold = Action(atype=constants.actions.fold,amount=0)
+#
+#
+#
+#
+#     state.do_action(call)
+#     state.do_action(rrasie)
+#     state.do_action(call)
+#     state.do_action(fold)
+#     print(state.street)
+#     print(state.board)
+#     for i in range(5):
+#         state.do_action(call)
+#     state.do_action(rrasie)
+#     print(state.street)
+#     print(state.board)
+#     for i in range(5):
+#         state.do_action(call)
+#     print(state.street)
+#     print(state.board)
+#     state.do_action(fold)
+#
+# #    ter = state.get_terminal_value()

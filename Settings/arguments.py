@@ -12,14 +12,15 @@ Created on Sun Aug 20 00:50:31 2017
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import os
 
-torch.set_default_tensor_type('torch.FloatTensor')
-
-torch.manual_seed(1234)
 #WORK_PATH = '/home/mjb/Nutstore/deepStack'
-WORK_PATH = '/home/carc/mjb/deepStack/'
+WORK_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), '..')) + '/'
 # whether to run on GPU
-gpu = torch.cuda.is_available()
+# gpu = torch.cuda.is_available()
+gpu = False
+#
+num_process = 15
 # gpu = False
 cpu_store = False
 multi_agent = True
@@ -72,9 +73,9 @@ net = '{nn.Linear(input_size, 50), nn.PReLU(), nn.Linear(50, output_size)}'
 loss_F = F.nll_loss
 loss = nn.MSELoss()
 dqn_init_policy = Tensor([0.01,0.50,0.45,0.01,0.01,0.01,0.01])
-reservoir = False
+reservoir = True
 # how often to save the model during training
-save_epoch = 10000
+save_epoch = 100
 # how many epochs to train for
 epoch_count = 200000
 # how many solved poker situations are generated for use as training examples
@@ -90,8 +91,8 @@ eta = 0.5
 sl_update_num = 128
 
 #load model
-load_model = False
-load_model_num = 60000
+load_model = True
+load_model_num = 40000
 
 muilt_gpu = False
 

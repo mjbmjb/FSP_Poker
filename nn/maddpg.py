@@ -10,6 +10,7 @@ import torch.nn.functional as F
 from torch.optim import Adam
 import torch.optim as optim
 import random
+import math
 import Settings.arguments as arguments
 import Settings.game_settings as game_settings
 
@@ -61,9 +62,9 @@ class Critic(nn.Module):
             obs_dim = dim_observation
             act_dim = dim_action
 
-        self.FC1 = nn.Linear(obs_dim, 1024)
-        self.FC2 = nn.Linear(256+act_dim, 512)
-        self.FC3 = nn.Linear(512, 128)
+        self.FC1 = nn.Linear(obs_dim, 128)
+        self.FC2 = nn.Linear(128+act_dim, 128)
+        self.FC3 = nn.Linear(128, 128)
         self.FC4 = nn.Linear(128, 1)
 
     # obs: batch_size * obs_dim
@@ -77,8 +78,8 @@ class Critic(nn.Module):
 class Actor(nn.Module):
     def __init__(self, dim_observation, dim_action):
         super(Actor, self).__init__()
-        self.FC1 = nn.Linear(dim_observation, 512)
-        self.FC2 = nn.Linear(512, 128)
+        self.FC1 = nn.Linear(dim_observation, 128)
+        self.FC2 = nn.Linear(128, 128)
         self.FC3 = nn.Linear(128, dim_action)
         self.logsoftmax = nn.LogSoftmax(1)
 
@@ -119,7 +120,7 @@ class MADDPG:
                  dim_act=game_settings.actions_count,
                  batch_size=512,
                  capacity=100000,
-                 explor_down=10000,
+                 explor_down=1000,
                  episodes_before_train=3000):
         self.n_agents = n_agents
         self.n_states = dim_obs
@@ -136,15 +137,18 @@ class MADDPG:
         self.explor_down = explor_down
 
         self.var = [1.0 for i in range(n_agents)]
+        self.EPS_START = 0.9
+        self.EPS_END = 0.05
+        self.EPS_DECAY = 10000
 
-        self.actors = [Actor(dim_obs, dim_act).apply(weights_init) for i in range(n_agents)]
+        self.actors = [Actor(dim_obs, dim_act) for i in range(n_agents)]
         self.critics = [Critic(n_agents, dim_obs,
-                               dim_act).apply(weights_init) for i in range(n_agents)]
+                               dim_act) for i in range(n_agents)]
         self.actors_target = deepcopy(self.actors)
         self.critics_target = deepcopy(self.critics)
 
         self.critic_optimizer = [Adam(x.parameters(),
-                                      lr=1e-3) for x in self.critics]
+                                      lr=0.005) for x in self.critics]
         self.actor_optimizer = [Adam(x.parameters(),
                                      lr=1e-3) for x in self.actors]
 
@@ -163,7 +167,8 @@ class MADDPG:
         self.viz = None
         self.steps_done = 0
         self.episode_done = 0
-        self.current_loss = 0
+        self.current_loss_actor = 0
+        self.current_loss_critic = 0
 
     @classmethod
     def init_from_env(cls, env,episodes_before_train=3000):
@@ -223,19 +228,22 @@ class MADDPG:
         if not self.viz:
             import visdom
             self.viz = visdom.Visdom()
-            self.win = self.viz.line(X=np.array([self.episode_done]),
-                                     Y=np.array([self.current_loss]))
-        if step % 10000 == 0:
-            self.viz.updateTrace(
+            self.actor_win = self.viz.line(X=np.array([self.episode_done]),
+                                     Y=np.array([self.current_loss_actor]))
+            self.critic_win = self.viz.line(X=np.array([self.episode_done]),
+                                     Y=np.array([self.current_loss_critic]))
+
+        self.viz.line(
                  X=np.array([self.episode_done]),
-                 Y=np.array([self.current_loss]),
-                 win=self.win)
-        else:
-            self.viz.line(
-                 X=np.array([self.episode_done]),
-                 Y=np.array([self.current_loss]),
-                 win=self.win,
+                 Y=np.array([self.current_loss_actor]),
+                 win=self.actor_win,
                  update='append')
+        self.viz.line(
+                 X=np.array([self.episode_done]),
+                 Y=np.array([self.current_loss_critic]),
+                 win=self.critic_win,
+                 update='append')
+
 
     def update_policy(self):
         # do not train until exploration is enough
@@ -270,10 +278,10 @@ class MADDPG:
             current_Q = self.critics[agent](whole_state, whole_action).squeeze()
             # current_playe action whole_action[:,agent * 7:(agent+1) * 7]
             non_final_next_actions = [
-                self.select_action(i, non_final_next_states[:,
-                                                            i,
-                                                            :])[1] for i in range(
-                                                                self.n_agents)]
+                self.select_action(i,
+                                   non_final_next_states[:,i,:],
+                                   is_target=True)[1] for i in range(self.n_agents)]
+
             non_final_next_actions = torch.stack(non_final_next_actions)
 #           non_final_next_actions = Variable(non_final_next_actions)
 #             non_final_next_actions = (
@@ -309,17 +317,29 @@ class MADDPG:
             action_i = self.actors[agent](state_i)
             # get Gumbel-Softmax sample
             gum_action = gumbel_softmax(action_i, temperature=(np.exp(np.log(10)-self.steps_done/self.explor_down) + 1), hard=True)
+            # gum_action = gumbel_softmax(action_i,
+            #                             temperature=1,
+            #                             hard=True)
+
+            # softmax_action = F.softmax(action_i)
+            # m = Categorical(softmax_action)
+            # act = m.sample().view((-1, 1))
+            # # produce ont hot
+            # one_hot = torch.eye(softmax_action.size(1)).cuda()[act].squeeze(1)
+            # log_pro = m.log_prob(act.squeeze())
+
             # log_pro = torch.log(gumbel_softmax(action_i, temperature=(1 / np.sqrt(self.steps_done*1e-1))))
             ac = action_batch.clone()
+            # ac[:, agent, :] = one_hot
             ac[:, agent, :] = gum_action
             whole_action = ac.view(self.batch_size, -1)
 
-            # actor_loss = -self.critics[agent](whole_state, whole_action) * ac[:,agent,:]
             actor_loss = -self.critics[agent](whole_state, whole_action)
-            # actor_loss = actor_loss.mean()
+            # actor_loss = -self.critics[agent](whole_state, whole_action.detach()) * log_pro.unsqueeze(1)
+            # actor_loss = actor_loss.sum()
             # 尝试和reinforce一样的做法
             actor_loss = actor_loss.mean()
-            actor_loss += (action_i ** 2).mean() * 1e-3
+            # actor_loss += (action_i ** 2).mean() * 1e-3
             actor_loss.backward()
             # 降一下梯度吧.....
             for param in self.actors[agent].parameters():
@@ -330,7 +350,8 @@ class MADDPG:
             self.actor_optimizer[agent].step()
             # c_loss.append(loss_Q.data[0].sum())
             # a_loss.append(actor_loss.data[0].sum())
-            self.current_loss = actor_loss.data.sum()
+            self.current_loss_critic = loss_Q.data.sum()
+            self.current_loss_actor = actor_loss.data.sum()
 
         self.steps_done += 1
         if self.steps_done % 100 == 0 and self.steps_done > 0:
@@ -340,7 +361,8 @@ class MADDPG:
 
         return c_loss, a_loss
 
-    def select_action(self, i_agent, state_batch, is_target=False):
+    def select_action(self, i_agent, state_batch, is_target=False, sto=False):
+        temperature = np.exp(np.log(10)-self.steps_done/self.explor_down) + 1
         # return batch X action_dim
         # state_batch: n_agents x state_dim
         if is_target:
@@ -350,22 +372,30 @@ class MADDPG:
         # policy 可能为nan
         if np.any(np.isnan(policy.cpu().numpy())):
             assert (False)
-        policy = F.softmax(policy)
+        policy = F.softmax(policy / temperature)
         # assert((policy >= 0).sum() == 7)
-        m = Categorical(policy)
-        act = m.sample().view((-1, 1))
-        # produce ont hot
-        one_hot = torch.eye(policy.size(1)).cuda()[act].squeeze(1)
+        if sto: # stochastic process choose action based on action distribution
+            m = Categorical(policy)
+            act = m.sample().view((-1, 1))
+            # produce ont hot
+            one_hot = torch.eye(policy.size(1)).cuda()[act].squeeze(1)
+        else:   # determinisitc process choose the max softmax action
+            # TODO act remains None
+            eps_threshold = self.EPS_END + (self.EPS_START - self.EPS_END) * \
+                       math.exp(-1. * self.steps_done / self.EPS_DECAY)
+            one_hot = onehot_from_logits(policy,eps=eps_threshold).cuda()
+            act = np.argmax(one_hot, 1).view((-1, 1)).cuda()
+
         return act, one_hot
 
     def save(self, path):
-        for i in range(game_settings.player_count):
+        for i in range(self.n_agents):
             save_path = path + '_' + str(i) + '.'
             torch.save(self.actors[i].state_dict(), save_path+'actor')
             torch.save(self.critics[i].state_dict(), save_path + 'critic')
 
     def load(self, path):
-        for i in range(game_settings.player_count):
+        for i in range(self.n_agents):
             save_path = path + '_' + str(i) + '.'
             self.actors[i].load_state_dict(torch.load(save_path+'actor'))
             self.critics[i].load_state_dict(torch.load(save_path+'critic'))

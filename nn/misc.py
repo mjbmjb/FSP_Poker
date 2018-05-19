@@ -3,6 +3,7 @@ import torch
 import torch.nn.functional as F
 import torch.distributed as dist
 from torch.autograd import Variable
+from torch.distributions import Categorical
 import numpy as np
 import Settings.arguments as arguments
 
@@ -56,11 +57,12 @@ def onehot_from_logits(logits, eps=0.0):
     if eps == 0.0:
         return argmax_acs
     # get random actions in one-hot form
-    rand_acs = Variable(torch.eye(logits.shape[1])[[np.random.choice(
-        range(logits.shape[1]), size=logits.shape[0])]], requires_grad=False)
+    rand_acs = torch.eye(logits.shape[1])[[np.random.choice(
+        range(logits.shape[1]), size=logits.shape[0])]].cuda()
     # chooses between best and random actions using epsilon greedy
     return torch.stack([argmax_acs[i] if r > eps else rand_acs[i] for i, r in
                         enumerate(torch.rand(logits.shape[0]))])
+
 
 # modified for PyTorch from https://github.com/ericjang/gumbel-softmax/blob/master/Categorical%20VAE.ipynb
 def sample_gumbel(shape, eps=1e-20, tens_type=torch.FloatTensor):
@@ -78,7 +80,7 @@ def gumbel_softmax_sample(logits, temperature):
     return F.softmax(y / temperature, dim=1) # softmax(log + gumbel)
 
 # modified for PyTorch from https://github.com/ericjang/gumbel-softmax/blob/master/Categorical%20VAE.ipynb
-def gumbel_softmax(logits, temperature=1.0, hard=False):
+def gumbel_softmax(logits, temperature=1.0, hard=False, eps=0.0):
     """Sample from the Gumbel-Softmax distribution and optionally discretize.
     Args:
       logits: [batch_size, n_class] unnormalized log-probs
@@ -91,9 +93,7 @@ def gumbel_softmax(logits, temperature=1.0, hard=False):
     """
     y = gumbel_softmax_sample(logits, temperature)
     if hard:
-        y_hard = onehot_from_logits(y)
+        y_hard = onehot_from_logits(y, eps=eps)
+        # y_hard = onthot_sto(y)
         y = (y_hard - y).detach() + y
     return y
-
-if __name__ == '__main__':
-    print(onehot_from_logits(torch.rand(12,3), 0.1))
