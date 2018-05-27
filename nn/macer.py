@@ -14,14 +14,14 @@ from torch.distributions import Categorical
 from collections import deque, namedtuple
 
 import Settings.arguments as arguments
-from nn.lstmac import ActorCritic
+from nn.lstmac import MCritic, Actor
 from nn.SharedRMSprop import SharedRMSprop
 from nn.make_env import make_env
 
 Transition = namedtuple('Transition', ('state', 'action', 'reward', 'policy'))
 
-def state_to_tensor(state):
-  return torch.from_numpy(state).float().unsqueeze(0)
+def state_to_tensor(states):
+  return [torch.from_numpy(state).float().unsqueeze(0) for state in states]
 
 class EpisodicReplayMemory():
   def __init__(self, capacity, max_episode_length):
@@ -62,10 +62,11 @@ class EpisodicReplayMemory():
   def __len__(self):
     return sum(len(episode) for episode in self.memory)
 
-class AcerOptim():
-    def __init__(self, observation_dim, action_dim):
+class MAcerOptim():
+    def __init__(self, observation_dim, action_dim, n_agent):
         self.observation_dim = observation_dim
         self.action_dim = action_dim
+        self.n_agent = n_agent
 
         self.T_max = 10000000 # Number of training steps
         self.t_max = 500 # Max number of forward steps for A3C before update
@@ -95,21 +96,42 @@ class AcerOptim():
         self.entropy_weight = 0.0001 # Entropy regularisation weight: β
         self.max_gradient_norm = 40  # Gradient L2 normalisation
 
-        # self.model = ActorCritic(observation_dim, action_dim, self.hidden_size)
-        self.shared_model = ActorCritic(observation_dim, action_dim, self.hidden_size)
-        self.shared_model.share_memory()
+        self.shared_critic = []
+        self.shared_actor = []
+        self.shared_a_critic = []
+        self.shared_a_actor = []
+        self.optimisers_actor = []
+        self.optimisers_critic = []
+        for i in range(n_agent):
+            sc = MCritic(observation_dim, action_dim, self.hidden_size)
+            sc.share_memory()
+            sac = MCritic(observation_dim, action_dim, self.hidden_size)
+            sac.load_state_dict(sc.state_dict())
+            sac.share_memory()
+            for param in sac.parameters():
+                param.requires_grad = False
 
-        # Create average network
-        # TODO debug require_grad == False
+            sa = Actor(observation_dim, action_dim, self.hidden_size)
+            sa.share_memory()
+            saa = Actor(observation_dim, action_dim, self.hidden_size)
+            saa.load_state_dict(sa.state_dict())
+            saa.share_memory()
+            for param in saa.parameters():
+                param.requires_grad = False
 
-        self.shared_average_model = ActorCritic(observation_dim, action_dim, self.hidden_size)
-        self.shared_average_model.load_state_dict(self.shared_model.state_dict())
-        self.shared_average_model.share_memory()
-        for param in self.shared_average_model.parameters():
-            param.requires_grad = False
-        # Create optimiser for shared network parameters with shared statistics
-        self.optimiser = SharedRMSprop(self.shared_model.parameters(), lr=self.lr, alpha=self.rmsprop_decay)
-        self.optimiser.share_memory()
+            optc = SharedRMSprop(sc.parameters(), lr=self.lr, alpha=self.rmsprop_decay)
+            optc.share_memory()
+            opta = SharedRMSprop(sa.parameters(), lr=self.lr, alpha=self.rmsprop_decay)
+            opta.share_memory()
+
+            self.shared_critic.append(sc)
+            self.shared_actor.append(sa)
+            self.shared_a_critic.append(sac)
+            self.shared_a_actor.append(saa)
+            self.optimisers_critic.append(optc)
+            self.optimisers_actor.append(opta)
+
+
 
     # Knuth's algorithm for generating Poisson samples
     def _poisson(self, lmbd):
@@ -248,8 +270,12 @@ class AcerOptim():
 # Acts and trains model
 def train(rank, model_opti, T):
     # every train process has distribute model
-    model = ActorCritic(model_opti.observation_dim, model_opti.action_dim, model_opti.hidden_size)
-    model.train()
+    n_agent = model_opti.n_agent
+    critics = [MCritic(model_opti.observation_dim, model_opti.action_dim, model_opti.hidden_size) for i in range(n_agent)]
+    actors = [Actor(model_opti.observation_dim, model_opti.action_dim, model_opti.hidden_size) for i in range(n_agent)]
+    for critic, actor in zip(critics,actors):
+        critic.train()
+        actor.train()
 
     env = make_env('simple')
 
@@ -264,54 +290,68 @@ def train(rank, model_opti, T):
         # On-policy episode loop
         while True:
             # Sync with shared model at least every t_max steps
-            model.load_state_dict(model_opti.shared_model.state_dict())
+            # [model[i].load_state_dict(model_opti[i].shared_model.state_dict()) for i in range(model_opti.n_agent)]
+
             # Get starting timestep
             t_start = t
 
             # Reset or pass on hidden state
             if done:
-                hx, avg_hx = Variable(torch.zeros(1, model_opti.hidden_size)), Variable(torch.zeros(1, model_opti.hidden_size))
-                cx, avg_cx = Variable(torch.zeros(1, model_opti.hidden_size)), Variable(torch.zeros(1, model_opti.hidden_size))
+                hx, avg_hx = torch.zeros(1, model_opti.hidden_size), torch.zeros(1, model_opti.hidden_size)
+                cx, avg_cx = torch.zeros(1, model_opti.hidden_size), torch.zeros(1, model_opti.hidden_size)
                 # Reset environment and done flag
-                state = state_to_tensor(env.reset()[0])
+                state = state_to_tensor(env.reset())
                 done, episode_length = False, 0
             else:
                 # Perform truncated backpropagation-through-time (allows freeing buffers after backwards call)
                 hx = hx.detach()
                 cx = cx.detach()
 
+            hxs = [hx.copy() for _ in range(n_agent)]
+            cxs = [cx.copy() for _ in range(n_agent)]
+            avg_hxs = [avg_hx.copy() for _ in range(n_agent)]
+            avg_cxs = [avg_cx.copy() for _ in range(n_agent)]
+
+
             # Lists of outputs for training
             policies, Qs, Vs, actions, rewards, average_policies = [], [], [], [], [], []
 
             while not done and t - t_start < model_opti.t_max:
                 # Calculate policy and values
-                policy, Q, V, (hx, cx) = model(Variable(state), (hx, cx))
-                average_policy, _, _, (avg_hx, avg_cx) = model_opti.shared_average_model(Variable(state), (avg_hx, avg_cx))
+                action = []
+                one_hot_action = []
+                policy = []
+                for i in range(n_agent):
+                    Q, (hxs[i], cxs[i]) = critics[i](state, (hxs[i], cxs[i]))
+                    p, (hxs[i], cxs[i]) = actors[i](state[i], (hxs[i], cxs[i]))
+                    average_p, (avg_hx, avg_cx) = model_opti.shared_average_model[i](state[i], (avg_hxs[i], avg_cxs[i]))
 
-                # Sample action
-                m = Categorical(policy)
-                action = m.sample()
-                one_hot_action = torch.eye(policy.size(1))[action].squeeze(0)
-                action = action.data.item()
-                # Graph broken as loss for stochastic action calculated manually
+                    # Sample action
+                    m = Categorical(p)
+                    a = m.sample()
+                    one_hot_a = torch.eye(p.size(1))[a].squeeze(0)
+                    a = a.data.item()
+                    # Graph broken as loss for stochastic action calculated manually
+                    action.append(a)
+                    one_hot_action.append(one_hot_a)
+                    policy.append(p)
 
                 # Step
-                next_state, reward, done, _ = env.step([one_hot_action] * 3)
-                next_state = state_to_tensor(next_state[0])
+                next_state, reward, done, _ = env.step(one_hot_action)
+                next_state = state_to_tensor(next_state)
                 # reward = args.reward_clip and min(max(reward, -1), 1) or reward  # Optionally clamp rewards
                 # TODO modify reward to mulplayer
-                reward = reward[0]
 
                 done = all(done) or episode_length >= model_opti.max_episode_length  # Stop episodes at a max length
                 episode_length += 1  # Increase episode counter
 
                 if not model_opti.on_policy:
                     # Save (beginning part of) transition for offline training
-                    memory.append(state, action, reward, policy.data)  # Save just tensors
+                    memory.append(state, action, reward, [p.data for p in policy])  # Save just tensors
                 # Save outputs for online training
                 [arr.append(el) for arr, el in zip((policies, Qs, Vs, actions, rewards, average_policies),
-                                                   (policy, Q, V, Variable(torch.LongTensor([[action]])),
-                                                    Variable(torch.Tensor([[reward]])), average_policy))]
+                                                   (policy, Q, V, action),
+                                                    torch.Tensor(reward), average_policy))]
 
                 # Increment counters
                 t += 1

@@ -7,6 +7,7 @@ from torch.distributions import Categorical
 import numpy as np
 import Settings.arguments as arguments
 
+
 # https://github.com/ikostrikov/pytorch-ddpg-naf/blob/master/ddpg.py#L11
 def soft_update(target, source, tau):
     """

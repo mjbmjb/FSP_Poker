@@ -2,8 +2,8 @@
 <project version="4">
   <component name="WebServers">
     <option name="servers">
-      <webServer id="6c0bd988-9d0b-4b63-a87b-6c1f59b22c9c" name="sftp" url="http://219.223.241.98">
-        <fileTransfer host="219.223.241.98" port="21" rootFolder="/home/carc">
+      <webServer id="6c0bd988-9d0b-4b63-a87b-6c1f59b22c9c" name="sftp" url="http://219.223.240.9">
+        <fileTransfer host="219.223.240.9" port="21" rootFolder="/home/carc">
           <advancedOptions>
             <advancedOptions dataProtectionLevel="Private" />
           </advancedOptions>

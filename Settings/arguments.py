@@ -91,8 +91,8 @@ eta = 0.5
 sl_update_num = 128
 
 #load model
-load_model = True
-load_model_num = 40000
+load_model = False
+load_model_num = 24000
 
 muilt_gpu = False
 

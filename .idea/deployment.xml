@@ -1,7 +1,14 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
-  <component name="PublishConfigData" autoUpload="On explicit save action" serverName="sftp" showNewOnTargetInSync="false">
+  <component name="PublishConfigData" autoUpload="Always" serverName="carc@219.223.240.9:22" showNewOnTargetInSync="false">
     <serverData>
+      <paths name="carc@219.223.240.9:22">
+        <serverdata>
+          <mappings>
+            <mapping deploy="/home/carc/mjb/deepStack" local="$PROJECT_DIR$" />
+          </mappings>
+        </serverdata>
+      </paths>
       <paths name="sftp">
         <serverdata>
           <mappings>
@@ -13,6 +20,6 @@
         </serverdata>
       </paths>
     </serverData>
-    <option name="myAutoUpload" value="ON_EXPLICIT_SAVE" />
+    <option name="myAutoUpload" value="ALWAYS" />
   </component>
 </project>

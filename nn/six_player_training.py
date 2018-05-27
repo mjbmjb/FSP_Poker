@@ -24,6 +24,8 @@ from nn.net_sl import SLOptim
 from nn.dqn import Transition as RL_TRAN
 from nn.net_sl import Transition as SL_TRAN
 from nn.maddpg import Experience as MADDPG_TRAN
+from nn.ppo import PPO
+from nn.mappo import MAPPO
 from Tree.game_state import GameState
 
 import random
@@ -536,47 +538,7 @@ class Counter():
 
 from nn.acer import ActorCritic, AcerOptim, train as acer_train , test as acer_test
 
-def gym_acer_tarin():
-    # mp.set_start_method('spawn')
-    # BLAS setup
-    os.environ['OMP_NUM_THREADS'] = '1'
-    os.environ['MKL_NUM_THREADS'] = '1'
-
-    # Setup
-    # mp.set_start_method(platform.python_version()[0] == '3' and 'spawn' or 'fork')  # Force true spawning (not forking) if available
-    T = Counter()  # Global shared counter
-    # Create shared network
-    env = make_env('simple')
-
-    n_agent = env.n
-    obs_dim = np.array([shape.shape[0] for shape in env.observation_space])
-    act_dim = env.action_space[0].n
-    # pad_dim = obs_dim.max() - obs_dim
-    # env.close()
-
-    acer_optim = AcerOptim(obs_dim.max(), act_dim)
-
-    # acer_optim.train(0, T, env)
-
-     # Start validation agent
-    processes = []
-    p = mp.Process(target=test, args=(0, acer_optim, T))
-    p.start()
-    processes.append(p)
-
-
-    # Start training agents
-    for rank in range(1, arguments.num_process + 1):
-        p = mp.Process(target=train, args=(rank, acer_optim, T, env))
-        p.start()
-        processes.append(p)
-
-     # Clean up
-    for p in processes:
-        p.join()
-
-
-if __name__ == '__main__':
+def gym_acer_train():
     mp.set_start_method('spawn', force=True)
     # # torch.manual_seed(1234)
     # if arguments.rl_model == 'dqn':
@@ -628,3 +590,90 @@ if __name__ == '__main__':
      # Clean up
     for p in processes:
         p.join()
+
+def gym_ppo_train():
+    import matplotlib.pyplot as plt
+    from common.utils import agg_double_list
+
+    env_id = 'simple_spread'
+    env = make_env(env_id)
+    env.seed(1234)
+    env_eval = make_env(env_id)
+    env_eval.seed(4321)
+    state_dim = env.observation_space[0].shape[0]
+    action_dim = env.action_space[0].n
+    n_agent = env.n
+
+    MAX_EPISODES = 20000
+    MAX_STEPS = 2
+    EPISODES_BEFORE_TRAIN = 0
+    EVAL_EPISODES = 5
+    EVAL_INTERVAL = 200
+
+    # roll out n steps
+    ROLL_OUT_N_STEPS = 200
+    # only remember the latest ROLL_OUT_N_STEPS
+    # MEMORY_CAPACITY = ROLL_OUT_N_STEPS
+    MEMORY_CAPACITY = ROLL_OUT_N_STEPS
+    # only use the latest ROLL_OUT_N_STEPS for training PPO
+    BATCH_SIZE = ROLL_OUT_N_STEPS
+
+    TARGET_UPDATE_STEPS = 20
+    TARGET_TAU = 1.0
+
+    REWARD_DISCOUNTED_GAMMA = 0.8
+    ENTROPY_REG = 0.01
+    #
+    DONE_PENALTY = None
+
+    CRITIC_LOSS = "mse"
+    MAX_GRAD_NORM = None
+
+    EPSILON_START = 0.99
+    EPSILON_END = 0.05
+    EPSILON_DECAY = 5000
+
+    mappo = MAPPO(n_agent = n_agent, env= env, memory_capacity=MEMORY_CAPACITY,
+              state_dim=state_dim, action_dim=action_dim,
+              batch_size=BATCH_SIZE, entropy_reg=ENTROPY_REG,
+              done_penalty=DONE_PENALTY, roll_out_n_steps=ROLL_OUT_N_STEPS, max_steps=MAX_STEPS,
+              target_update_steps=TARGET_UPDATE_STEPS, target_tau=TARGET_TAU,
+              reward_gamma=REWARD_DISCOUNTED_GAMMA,
+              epsilon_start=EPSILON_START, epsilon_end=EPSILON_END,
+              epsilon_decay=EPSILON_DECAY, max_grad_norm=MAX_GRAD_NORM,
+              episodes_before_train=EPISODES_BEFORE_TRAIN,
+              critic_loss=CRITIC_LOSS,
+              use_cuda=arguments.gpu)
+
+    episodes = []
+    eval_rewards = []
+    while mappo.n_episodes < MAX_EPISODES:
+        mappo.interact()
+        # print("Episode %d" % ppo.n_episodes )
+        if mappo.n_episodes >= EPISODES_BEFORE_TRAIN:
+            mappo.train()
+        if mappo.episode_done and ((mappo.n_episodes + 1) % EVAL_INTERVAL == 0):
+            rewards, _ = mappo.evaluation(env_eval, 100, EVAL_EPISODES)
+            rewards_mu, rewards_std = agg_double_list(rewards)
+            print("Episode %d, Average Reward %s" % (mappo.n_episodes + 1, str(rewards_mu)))
+            episodes.append(mappo.n_episodes + 1)
+            # TODO add multi agent reward
+            eval_rewards.append(rewards_mu[0])
+            mappo.plot_error_vis()
+
+    episodes = np.array(episodes)
+    eval_rewards = np.array(eval_rewards)
+    np.savetxt(arguments.WORK_PATH + "/Data/mappo/%s_ppo_episodes.txt" % env_id, episodes)
+    np.savetxt(arguments.WORK_PATH + "/Data/mappo/%s_ppo_eval_rewards.txt" % env_id, eval_rewards)
+
+    plt.figure()
+    plt.plot(episodes, eval_rewards)
+    plt.title("%s" % env_id)
+    plt.xlabel("Episode")
+    plt.ylabel("Average Reward")
+    plt.legend(["PPO"])
+    plt.savefig(arguments.WORK_PATH + "/Data/mappo/%s_ppo.png" % env_id)
+
+
+if __name__ == "__main__":
+    gym_ppo_train()
