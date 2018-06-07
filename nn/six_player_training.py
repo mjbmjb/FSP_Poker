@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+    #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
 Created on Sat Sep  2 05:15:26 2017
@@ -10,7 +10,7 @@ import sys
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 # sys.path.append('/home/carc/mjb/deepStack/')
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 
 # import cProfilev
 
@@ -26,6 +26,7 @@ from nn.net_sl import Transition as SL_TRAN
 from nn.maddpg import Experience as MADDPG_TRAN
 from nn.ppo import PPO
 from nn.mappo import MAPPO
+from nn.lstmmappo import MAPPO as LSTMMAPPO
 from Tree.game_state import GameState
 
 import random
@@ -595,23 +596,27 @@ def gym_ppo_train():
     import matplotlib.pyplot as plt
     from common.utils import agg_double_list
 
-    env_id = 'simple_spread'
+    env_id = 'simple_tag'
     env = make_env(env_id)
     env.seed(1234)
     env_eval = make_env(env_id)
     env_eval.seed(4321)
     state_dim = env.observation_space[0].shape[0]
     action_dim = env.action_space[0].n
+    # for pad
+    obs_dim = np.array([shape.shape[0] for shape in env.observation_space])
+    pad_dim = obs_dim.max() - obs_dim
+
     n_agent = env.n
 
-    MAX_EPISODES = 20000
-    MAX_STEPS = 2
+    MAX_EPISODES = 200000
+    MAX_STEPS = 1
     EPISODES_BEFORE_TRAIN = 0
     EVAL_EPISODES = 5
-    EVAL_INTERVAL = 200
+    EVAL_INTERVAL = 100
 
     # roll out n steps
-    ROLL_OUT_N_STEPS = 200
+    ROLL_OUT_N_STEPS = 50
     # only remember the latest ROLL_OUT_N_STEPS
     # MEMORY_CAPACITY = ROLL_OUT_N_STEPS
     MEMORY_CAPACITY = ROLL_OUT_N_STEPS
@@ -619,13 +624,15 @@ def gym_ppo_train():
     BATCH_SIZE = ROLL_OUT_N_STEPS
 
     TARGET_UPDATE_STEPS = 20
-    TARGET_TAU = 1.0
+    TARGET_TAU = 0.01
 
-    REWARD_DISCOUNTED_GAMMA = 0.8
+    REWARD_DISCOUNTED_GAMMA = 0.95
+    TAU = 0.95
     ENTROPY_REG = 0.01
     #
     DONE_PENALTY = None
 
+    HIDDEN_SIZE = 512
     CRITIC_LOSS = "mse"
     MAX_GRAD_NORM = None
 
@@ -633,26 +640,34 @@ def gym_ppo_train():
     EPSILON_END = 0.05
     EPSILON_DECAY = 5000
 
-    mappo = MAPPO(n_agent = n_agent, env= env, memory_capacity=MEMORY_CAPACITY,
+    mappo = LSTMMAPPO(n_agent=n_agent, env=env, memory_capacity=MEMORY_CAPACITY,
               state_dim=state_dim, action_dim=action_dim,
               batch_size=BATCH_SIZE, entropy_reg=ENTROPY_REG,
               done_penalty=DONE_PENALTY, roll_out_n_steps=ROLL_OUT_N_STEPS, max_steps=MAX_STEPS,
               target_update_steps=TARGET_UPDATE_STEPS, target_tau=TARGET_TAU,
-              reward_gamma=REWARD_DISCOUNTED_GAMMA,
+              actor_hidden_size=HIDDEN_SIZE, critic_hidden_size=HIDDEN_SIZE,
+              reward_gamma=REWARD_DISCOUNTED_GAMMA, tau=TAU,
               epsilon_start=EPSILON_START, epsilon_end=EPSILON_END,
               epsilon_decay=EPSILON_DECAY, max_grad_norm=MAX_GRAD_NORM,
               episodes_before_train=EPISODES_BEFORE_TRAIN,
               critic_loss=CRITIC_LOSS,
-              use_cuda=arguments.gpu)
+              use_cuda=arguments.gpu, is_hidden=True, pad_dim=pad_dim)
+
+    if arguments.load_model:
+        mappo.load("../Data/Model/(mappo)Iter:%d" % (arguments.load_model_num))
 
     episodes = []
     eval_rewards = []
     while mappo.n_episodes < MAX_EPISODES:
         mappo.interact()
+        if arguments.evalation:
+            rewards, _ = mappo.evaluation(env_eval, 100, EVAL_EPISODES)
+            continue
         # print("Episode %d" % ppo.n_episodes )
         if mappo.n_episodes >= EPISODES_BEFORE_TRAIN:
             mappo.train()
         if mappo.episode_done and ((mappo.n_episodes + 1) % EVAL_INTERVAL == 0):
+            mappo.save("../Data/Model/(mappo)Iter:" + str(mappo.n_episodes+1))
             rewards, _ = mappo.evaluation(env_eval, 100, EVAL_EPISODES)
             rewards_mu, rewards_std = agg_double_list(rewards)
             print("Episode %d, Average Reward %s" % (mappo.n_episodes + 1, str(rewards_mu)))

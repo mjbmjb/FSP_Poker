@@ -1,22 +1,19 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
-  <component name="PublishConfigData" autoUpload="Always" serverName="carc@219.223.240.9:22" showNewOnTargetInSync="false">
+  <component name="PublishConfigData" autoUpload="Always" serverName="carc@219.223.240.9:22" filePermissions="420" showNewOnTargetInSync="false">
     <serverData>
       <paths name="carc@219.223.240.9:22">
         <serverdata>
           <mappings>
-            <mapping deploy="/home/carc/mjb/deepStack" local="$PROJECT_DIR$" />
+            <mapping deploy="/home/carc/mjb/deepStack" local="$PROJECT_DIR$" web="/" />
           </mappings>
         </serverdata>
       </paths>
-      <paths name="sftp">
+      <paths name="wpc">
         <serverdata>
           <mappings>
-            <mapping deploy="/mjb/deepStack" local="$PROJECT_DIR$" web="/" />
+            <mapping deploy="/home/carc/mjb/deepStack" local="$PROJECT_DIR$" web="/" />
           </mappings>
-          <excludedPaths>
-            <excludedPath local="true" path="$PROJECT_DIR$/Data/Model" />
-          </excludedPaths>
         </serverdata>
       </paths>
     </serverData>

@@ -197,7 +197,6 @@ class PPO:
         advantage, deltas = np.zeros_like(rewards), np.zeros_like(rewards)
 
         prev_value = 0
-        # TODO determine the value of pre_advantage
         prev_advantage = 0
         for t in reversed(range(0, len(rewards))):
             deltas[t] = prev_value * self.reward_gamma + rewards[t] - values[t]

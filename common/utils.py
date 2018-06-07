@@ -22,8 +22,8 @@ def index_to_one_hot(index, dim):
     eye = th.eye(dim)
     if arguments.gpu:
         eye = eye.cuda()
-    one_hot = [eye[i] for i in index] if isinstance(index, list) else \
-               eye[index]
+    one_hot = [eye[i.squeeze()] for i in index] if isinstance(index, list) or isinstance(index , tuple) \
+               else eye[index]
     return one_hot
 
 
@@ -59,3 +59,10 @@ def logpro2entropy(logpros):
     probs = th.exp(logpros)
     dist_entropy = -(logpros * probs).sum(-1).mean()
     return dist_entropy
+
+def padobs(obs, pad_dim):
+    return_obs = []
+    for ob, dim in zip(obs, pad_dim):
+        npob = np.pad(ob, (0,dim), 'constant', constant_values=0)
+        return_obs.append(npob)
+    return return_obs

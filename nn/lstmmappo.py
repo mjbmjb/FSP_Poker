@@ -8,9 +8,10 @@ import numpy as np
 from copy import deepcopy
 
 # from common.Agent import Agent
-from nn.mlpac import Actor, MCritic
+from nn.mlpac import Actor as MLPActor, MCritic as MLPMCritic
+from nn.lstmac import Actor as LSTMActor, MCritic as LSTMMCritic
 from nn.ppo import PPO
-from common.utils import to_tensor, index_to_one_hot, logpro2entropy
+from common.utils import to_tensor, index_to_one_hot, logpro2entropy, padobs
 from nn.misc import soft_update
 import Settings.arguments as arguments
 
@@ -18,7 +19,7 @@ import random
 from torch.distributions import Categorical
 from collections import  namedtuple
 Experience = namedtuple("Experience",
-                        ("states", "actions", "rewards", "advantages", "next_states", "dones"))
+                        ("states", "actions", "rewards", "advantages", "hidden", "next_states", "dones"))
 
 
 class ReplayMemory(object):
@@ -30,22 +31,22 @@ class ReplayMemory(object):
         self.memory = []
         self.position = 0
 
-    def _push_one(self, state, action, reward, advantage, next_state=None, done=None):
+    def _push_one(self, state, action, reward, advantage, hidden, next_state=None, done=None):
         if len(self.memory) < self.capacity:
             self.memory.append(None)
-        self.memory[self.position] = Experience(state, action, reward, advantage, next_state, done)
+        self.memory[self.position] = Experience(state, action, reward, advantage, hidden, next_state, done)
         self.position = (self.position + 1) % self.capacity
 
-    def push(self, states, actions, rewards, advantages, next_states=None, dones=None):
+    def push(self, states, actions, rewards, advantages, hidden, next_states=None, dones=None):
         if isinstance(states, list):
             if next_states is not None and len(next_states) > 0:
-                for s,a,r, ad, n_s,d in zip(states, actions, rewards, advantages, next_states, dones):
-                    self._push_one(s, a, r, ad, n_s, d)
+                for s,a,r, ad, h, n_s,d in zip(states, actions, rewards, advantages, hidden, next_states, dones):
+                    self._push_one(s, a, r, ad, h, n_s, d)
             else:
-                for s,a,r, ad in zip(states, actions, rewards, advantages):
-                    self._push_one(s, a, r, ad)
+                for s,a,r, ad, h in zip(states, actions, rewards, advantages, hidden):
+                    self._push_one(s, a, r, ad, h)
         else:
-            self._push_one(states, actions, rewards, advantages, next_states, dones)
+            self._push_one(states, actions, rewards, advantages, hidden, next_states, dones)
 
     def sample(self, batch_size):
         if batch_size > len(self.memory):
@@ -78,7 +79,7 @@ class MAPPO(PPO):
                  optimizer_type="adam", entropy_reg=0.01,
                  max_grad_norm=0.5, batch_size=128, episodes_before_train=500,
                  epsilon_start=0.9, epsilon_end=0.01, epsilon_decay=200,
-                 use_cuda=True):
+                 use_cuda=True, is_hidden=False,pad_dim=None):
 
         super(MAPPO, self).__init__(env, state_dim, action_dim,
                  memory_capacity, max_steps,
@@ -95,13 +96,17 @@ class MAPPO(PPO):
 
         self.n_agent = n_agent
 
-        self.actors = [Actor(state_dim, actor_hidden_size,
-                                  action_dim, actor_output_act) for _ in range(n_agent)]
-        self.critics = [MCritic(n_agent, state_dim, action_dim,
-                              critic_hidden_size, 1) for _ in range(n_agent)]
+
+        Actor = LSTMActor if is_hidden else MLPActor
+        MCritic = LSTMMCritic if is_hidden else MLPMCritic
+        self.hidden_size = actor_hidden_size
+        self.actors = [Actor(state_dim, action_dim,actor_hidden_size, actor_output_act) for _ in range(n_agent)]
+        self.critics = [MCritic(n_agent, state_dim, action_dim, \
+                                critic_hidden_size, 1) for _ in range(n_agent)]
         # to ensure target network and learning network has the same weights
         self.actors_target = deepcopy(self.actors)
         self.critics_target = deepcopy(self.critics)
+        self.is_hidden = is_hidden
         self.memory = ReplayMemory(memory_capacity)
 
         if self.optimizer_type == "adam":
@@ -116,6 +121,7 @@ class MAPPO(PPO):
                                      for x in self.critics]
 
         self.use_cuda = use_cuda
+        self.device = arguments.device
         if self.use_cuda:
             for i in range(n_agent):
                 self.actors[i].cuda()
@@ -132,62 +138,68 @@ class MAPPO(PPO):
         self.current_loss_actor = 0
         self.current_loss_critic = 0
 
+        self.pad_dim = pad_dim
+
     # predict softmax action based on state
-    def _softmax_action(self, agent, state):
-        state_var = to_tensor(state[agent], self.use_cuda)
-        softmax_action_var = th.exp(self.actors[agent](state_var))
+    def _softmax_action(self, agent, state, hidden):
+        state_var = to_tensor(state[agent], self.use_cuda).unsqueeze(0)
+        if self.is_hidden:
+            action, hidden_r = self.actors[agent](state_var, hidden)
+            softmax_action_var = th.exp(action)
+        else:
+            softmax_action_var = th.exp(self.actors[agent](state_var))
         if self.use_cuda:
             softmax_action = softmax_action_var.data.cpu()
         else:
             softmax_action = softmax_action_var.data
 
-        return softmax_action
+        return softmax_action, hidden_r
 
     # choose an action based on state with random noise added for exploration in training
-    def exploration_action(self, agent, state):
-        softmax_action = self._softmax_action(agent, state)
+    def exploration_action(self, agent, state, hidden):
+        softmax_action, hidden = self._softmax_action(agent, state, hidden)
         epsilon = self.epsilon_end + (self.epsilon_start - self.epsilon_end) * \
                                   np.exp(-1. * self.n_steps / self.epsilon_decay)
         if np.random.rand() < epsilon:
             action = np.random.choice(self.action_dim)
         else:
             action = np.argmax(softmax_action)
-        return action
+        return action, hidden
 
     # choose an action based on state for execution
-    def action(self, agent, state):
-        softmax_action = self._softmax_action(agent, state)
+    def action(self, agent, state, hidden):
+        softmax_action, hidden = self._softmax_action(agent, state, hidden)
         action = np.argmax(softmax_action)
-        return action
+        return action, hidden
 
     # TODO add entrophy
-    def dist_exploration_action(self, agent, state):
-        softmax_action = self._softmax_action(agent, state)
+    def dist_exploration_action(self, agent, state, hidden):
+        softmax_action, hidden = self._softmax_action(agent, state, hidden)
         assert((softmax_action >= 0).sum().item() == 5)
         m = Categorical(to_tensor(softmax_action))
         action = m.sample()
-        return action
+        return action, hidden
 
 
-    def dist_action(self,agent, state):
-        softmax_action = self._softmax_action(agent, state)
+    def dist_action(self,agent, state, hidden):
+        softmax_action, hidden = self._softmax_action(agent, state, hidden)
         m = Categorical(to_tensor(softmax_action))
         action = m.sample()
-        return action
+        return action, hidden
 
     # evaluate value for a state-action pair
-    def value(self, agent, states, actions):
+    def value(self, agent, states, actions, hidden):
         state_var_list = [to_tensor(states[i], self.use_cuda) for i in range(self.n_agent)]
         state_var = th.cat(state_var_list, 0).unsqueeze(0)
         action_var = th.cat(actions, 0).unsqueeze(0)
         # action = index_to_one_hot(action, self.action_dim)
         # action_var = to_tensor([action], self.use_cuda)
-        value_var = self.critics[agent](state_var, action_var)
+        value_var, hidden_r = self.critics[agent](state_var, action_var, hidden)
         if self.use_cuda:
             value = value_var.data.cpu()
         else:
             value = value_var.data
-        return value
+        return value, hidden_r
 
     # discount roll out rewards
     def _discount_reward(self, rewards, values):
@@ -210,7 +222,13 @@ class MAPPO(PPO):
 
     def interact(self):
         if (self.max_steps is not None) and (self.n_steps % self.max_steps == 0):
-            self.env_state = self.env.reset()
+            self.env_state = padobs(self.env.reset(), self.pad_dim)
+            if self.is_hidden:
+                self.ac_hidden= [(th.zeros(1, self.hidden_size,device=self.device), th.zeros(1, self.hidden_size,device=self.device))\
+                                 for _ in range(self.n_agent)]
+                self.c_hidden = [(th.zeros(1, self.hidden_size,device=self.device), th.zeros(1, self.hidden_size,device=self.device))
+                                 for _ in range(self.n_agent)]
+
         states = []
         actions = []
         rewards = []
@@ -221,23 +239,30 @@ class MAPPO(PPO):
         # Todo modify to multi
         for i in range(self.roll_out_n_steps):
             states.append(self.env_state)
-            action = [self.dist_exploration_action(agent, self.env_state)\
-                      for agent in range(self.n_agent)]
+
+            if self.is_hidden:
+                self.ac_hidden = [(h[0].detach(), h[1].detach()) for h in self.ac_hidden]
+                self.c_hidden = [(h[0].detach(), h[1].detach()) for h in self.c_hidden]
+            hidden.append(tuple([list(self.ac_hidden), list(self.c_hidden)]))
+
+            action, self.ac_hidden = zip(*[self.dist_exploration_action(agent, self.env_state, self.ac_hidden[agent])\
+                      for agent in range(self.n_agent)])
             one_hot_action = index_to_one_hot(action, dim=self.action_dim)
             next_state, reward, done, _ = self.env.step(one_hot_action)
+            next_state = padobs(next_state,self.pad_dim)
             actions.append(action)
             if all(done) and self.done_penalty is not None:
                 reward = self.done_penalty
             rewards.append(reward)
             # for advantage
-            value = [self.value(agent, self.env_state, one_hot_action) \
-                     for agent in range(self.n_agent)]
+            value, self.c_hidden = zip(*[self.value(agent, self.env_state, one_hot_action, self.c_hidden[agent]) \
+                     for agent in range(self.n_agent)])
+            [v.squeeze_() for v in value]
             values.append(value)
-
             final_state = next_state
             self.env_state = next_state
             if all(done):
-                self.env_state = self.env.reset()
+                self.env_state = padobs(self.env.reset(), self.pad_dim)
                 break
 
         # discount reward
@@ -257,7 +282,7 @@ class MAPPO(PPO):
         dis_rewards, advantages = self._discount_reward(rewards, values)
         # print(self.n_steps)
         self.n_steps += 1
-        self.memory.push(states, actions, dis_rewards, advantages)
+        self.memory.push(states, actions, dis_rewards, advantages, hidden)
 
 
 
@@ -280,13 +305,23 @@ class MAPPO(PPO):
         returns_var = to_tensor(batch.rewards, self.use_cuda)
         advantages_var = to_tensor(batch.advantages, self.use_cuda)
         # rewards_var = to_tensor(batch.disrewards, self.use_cuda).view(-1, 1)
+        # hidden batch x agent x (actor, critic) x (hx , cx)
+        actor_h, critic_h = zip(*batch.hidden)
+        actor_h = list(zip(*actor_h))
+        critic_h = list(zip(*critic_h))
 
         for agent in range(self.n_agent):
+            # Hidden is hard to unpack so put here
+            hx, cx = zip(*actor_h[agent])
+            ac_hidden_var = (th.cat(hx), th.cat(cx))
+            hx, cx = zip(*critic_h[agent])
+            c_hidden_var = (th.cat(hx), th.cat(cx))
 
             # update critic network
             self.critic_optimizer[agent].zero_grad()
             target_values = returns_var[:,agent]
-            values = self.critics[agent](whole_states_var,whole_ont_hot_actions).squeeze()
+            values, _ = self.critics[agent](whole_states_var,whole_ont_hot_actions,c_hidden_var)
+            values = values.squeeze()
             if self.critic_loss == "huber":
                 critic_loss = nn.functional.smooth_l1_loss(values, target_values)
             else:
@@ -304,11 +339,12 @@ class MAPPO(PPO):
             # # normalizing advantages seems not working correctly here
             # advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-5)
             advantages = advantages_var[:,agent]
-            log_probs = self.actors[agent](states_var[:,agent,:])
+            log_probs, _ = self.actors[agent](states_var[:,agent,:], ac_hidden_var)
             action_log_probs = th.gather(log_probs,dim=1, index=action_var[:,agent].unsqueeze(1))
             # dist_entropy = logpro2entropy(log_probs)
-            old_action_log_probs = th.gather(self.actors_target[agent](states_var[:,agent,:]).detach(),
-                                             dim=1, index=action_var[:,agent].unsqueeze(1))
+            old_action, _ = self.actors_target[agent](states_var[:,agent,:], ac_hidden_var)
+            old_action = old_action.detach()
+            old_action_log_probs = th.gather(old_action, dim=1, index=action_var[:,agent].unsqueeze(1))
             ratio = th.exp(action_log_probs - old_action_log_probs).squeeze()
             surr1 = ratio * advantages
             surr2 = th.clamp(ratio, 1.0 - self.clip_param, 1.0 + self.clip_param) * advantages
@@ -335,23 +371,29 @@ class MAPPO(PPO):
             steps = 0
             rewards_i = []
             infos_i = []
-            state = env.reset()
-            action = [self.dist_action(agent, state)\
-                      for agent in range(self.n_agent)]
+            if self.is_hidden:
+                ac_hidden= [(th.zeros(1, self.hidden_size,device=self.device), th.zeros(1, self.hidden_size,device=self.device))\
+                                 for _ in range(self.n_agent)]
+
+            state = padobs(env.reset(), self.pad_dim)
+            action, ac_hidden = zip(*[self.dist_exploration_action(agent, state, ac_hidden[agent]) \
+                                      for agent in range(self.n_agent)])
             one_hot_action = index_to_one_hot(action, self.action_dim)
             state, reward, done, info = env.step(one_hot_action)
+            state = padobs(state, self.pad_dim)
             done = done[0] if isinstance(done, list) else done
             rewards_i.append(reward)
             infos_i.append(info)
             while not done and steps < eval_steps:
-                action = [self.dist_action(agent, state)\
-                          for agent in range(self.n_agent)]
+                action, ac_hidden = zip(*[self.dist_action(agent, state, ac_hidden[agent]) \
+                                          for agent in range(self.n_agent)])
                 one_hot_action = index_to_one_hot(action, self.action_dim)
                 state, reward, done, info = env.step(one_hot_action)
+                state = padobs(state, self.pad_dim)
                 done = done[0] if isinstance(done, list) else done
                 rewards_i.append(reward)
                 infos_i.append(info)
-                if arguments.render:
+                if arguments.evalation:
                    env.render()
                 steps += 1
             rewards.append(rewards_i)
@@ -392,3 +434,5 @@ class MAPPO(PPO):
             save_path = path + '_' + str(i) + '.'
             self.actors[i].load_state_dict(th.load(save_path+'actor'))
             self.critics[i].load_state_dict(th.load(save_path+'critic'))
+        self.actors_target = deepcopy(self.actors)
+        self.critics_target = deepcopy(self.critics)
