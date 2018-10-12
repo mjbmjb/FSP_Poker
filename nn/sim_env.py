@@ -85,9 +85,9 @@ class SimEnv:
                 if len(record) > 0:
                     record_player = record[-1].state.current_player
                     if self.distributed:
-                        record[-1].reward.add_(terminal_value[record_player] - next_state.bets[record_player])
+                        record[-1].reward.add_((terminal_value[record_player] - next_state.bets[record_player]).float())
                     else:
-                        record[-1].reward.add_(terminal_value[record_player])
+                        record[-1].reward.add_(terminal_value[record_player].float())
 
             # for multi agent
             terminal_value = terminal_value - next_state.bets

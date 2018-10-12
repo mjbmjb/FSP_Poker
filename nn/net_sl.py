@@ -60,13 +60,13 @@ def reservoir_sample(memory, K):
 class SLNet(nn.Module):
     def __init__(self, dim=arguments.dim_obs):
         super(SLNet, self).__init__()
-        self.fc1 = nn.Linear(dim,512)
-        self.fc1_bn = nn.BatchNorm1d(512)
+        self.fc1 = nn.Linear(dim,1024)
+        self.fc1_bn = nn.BatchNorm1d(1024)
         # self.fc2 = nn.Linear(64,64)
         # self.fc2_bn = nn.BatchNorm1d(64)
-        self.fc3 = nn.Linear(512,512)
-        self.fc3_bn = nn.BatchNorm1d(512)
-        self.output = nn.Linear(512,5)
+        self.fc3 = nn.Linear(1024,1024)
+        self.fc3_bn = nn.BatchNorm1d(1024)
+        self.output = nn.Linear(1024,5)
         self.logsoftmax = nn.LogSoftmax()
         
     def forward(self, x):

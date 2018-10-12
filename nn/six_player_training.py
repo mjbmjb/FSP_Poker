@@ -10,7 +10,7 @@ import sys
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 # sys.path.append('/home/carc/mjb/deepStack/')
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 
 # import cProfilev
 
@@ -71,7 +71,7 @@ def load_model(iter_time):
 
 
 def save_model(episod):
-    path = "../Data/Model/Iter:" + str(episod)
+    path = arguments.WORK_PATH + "/Data/Model/Iter:" + str(episod)
 
     for agent in Agents:
         # save sl strategy
@@ -214,17 +214,17 @@ def single_train():
             current_player = state.current_player
             # Select and perform an action
             #            print(state_tensor.size(1))
-            assert (state_tensor.size(1) == 133)
+            assert (state_tensor.size(1) == 486)
 
             if flag == 0:
                 # sl
                 #                action = Agents[current_player].sl.select_action(state_tensor)
-                action = Agents[0].sl.select_action(state_tensor)
+                action = Agents[0].sl.select_action(state_tensor)[0]
             #                print("SL Action:"+str(action[0][0]))
             elif flag == 1:
                 # rl
                 #                action = Agents[current_player].rl.select_action(state_tensor)
-                action = Agents[0].rl.select_action(state_tensor, state.current_player)
+                action = Agents[0].rl.select_action(state_tensor, state.current_player)[0]
             #                print("RL Action:"+str(action[0][0]))
             else:
                 assert (False)
@@ -257,8 +257,7 @@ def single_train():
                 else:
                     raise (NotImplementedError)
 
-                if len(
-                        Agent.sl.memory.memory) >= Agent.sl.memory.capacity / 10 and i_episode % arguments.sl_update == 0:
+                if len(Agent.sl.memory.memory) >= Agent.sl.memory.capacity / 10 and i_episode % arguments.sl_update == 0:
                     Agent.sl.optimize_model()
                 if i_episode % 100 == 0 and i_episode > 0:
                     # Agent.sl.test(10)
@@ -596,30 +595,32 @@ def gym_ppo_train():
     import matplotlib.pyplot as plt
     from common.utils import agg_double_list
 
-    env_id = 'simple_tag'
+    # env_id = 'simple_tag'
+    # env_id = 'simple_spread'
+    env_id = 'simple_speaker_listener'
     env = make_env(env_id)
     env.seed(1234)
     env_eval = make_env(env_id)
     env_eval.seed(4321)
-    state_dim = env.observation_space[0].shape[0]
-    action_dim = env.action_space[0].n
+    state_dim = max([item.shape[0] for item in env.observation_space])
+    action_dim = max([item.n for item in env.action_space])
     # for pad
     obs_dim = np.array([shape.shape[0] for shape in env.observation_space])
-    pad_dim = obs_dim.max() - obs_dim
+    obspad_dim = obs_dim.max() - obs_dim
 
     n_agent = env.n
 
     MAX_EPISODES = 200000
-    MAX_STEPS = 1
-    EPISODES_BEFORE_TRAIN = 0
+    MAX_STEPS = 2
+    EPISODES_BEFORE_TRAIN = 10
     EVAL_EPISODES = 5
-    EVAL_INTERVAL = 100
+    EVAL_INTERVAL = 50
 
     # roll out n steps
-    ROLL_OUT_N_STEPS = 50
+    ROLL_OUT_N_STEPS = 100
     # only remember the latest ROLL_OUT_N_STEPS
-    # MEMORY_CAPACITY = ROLL_OUT_N_STEPS
     MEMORY_CAPACITY = ROLL_OUT_N_STEPS
+    # MEMORY_CAPACITY = 50000
     # only use the latest ROLL_OUT_N_STEPS for training PPO
     BATCH_SIZE = ROLL_OUT_N_STEPS
 
@@ -633,12 +634,12 @@ def gym_ppo_train():
     DONE_PENALTY = None
 
     HIDDEN_SIZE = 512
-    CRITIC_LOSS = "mse"
+    CRITIC_LOSS = "huber"
     MAX_GRAD_NORM = None
 
     EPSILON_START = 0.99
     EPSILON_END = 0.05
-    EPSILON_DECAY = 5000
+    EPSILON_DECAY = 1000
 
     mappo = LSTMMAPPO(n_agent=n_agent, env=env, memory_capacity=MEMORY_CAPACITY,
               state_dim=state_dim, action_dim=action_dim,
@@ -651,10 +652,11 @@ def gym_ppo_train():
               epsilon_decay=EPSILON_DECAY, max_grad_norm=MAX_GRAD_NORM,
               episodes_before_train=EPISODES_BEFORE_TRAIN,
               critic_loss=CRITIC_LOSS,
-              use_cuda=arguments.gpu, is_hidden=True, pad_dim=pad_dim)
+              use_cuda=arguments.gpu, is_hidden=True, obspad_dim=obspad_dim)
 
     if arguments.load_model:
         mappo.load("../Data/Model/(mappo)Iter:%d" % (arguments.load_model_num))
+        mappo.n_episodes = arguments.load_model_num
 
     episodes = []
     eval_rewards = []
@@ -666,7 +668,8 @@ def gym_ppo_train():
         # print("Episode %d" % ppo.n_episodes )
         if mappo.n_episodes >= EPISODES_BEFORE_TRAIN:
             mappo.train()
-        if mappo.episode_done and ((mappo.n_episodes + 1) % EVAL_INTERVAL == 0):
+        if mappo.episode_done and ((mappo.n_episodes + 1) % EVAL_INTERVAL == 0)\
+                              and mappo.n_episodes >= EPISODES_BEFORE_TRAIN:
             mappo.save("../Data/Model/(mappo)Iter:" + str(mappo.n_episodes+1))
             rewards, _ = mappo.evaluation(env_eval, 100, EVAL_EPISODES)
             rewards_mu, rewards_std = agg_double_list(rewards)
@@ -676,18 +679,18 @@ def gym_ppo_train():
             eval_rewards.append(rewards_mu[0])
             mappo.plot_error_vis()
 
-    episodes = np.array(episodes)
-    eval_rewards = np.array(eval_rewards)
-    np.savetxt(arguments.WORK_PATH + "/Data/mappo/%s_ppo_episodes.txt" % env_id, episodes)
-    np.savetxt(arguments.WORK_PATH + "/Data/mappo/%s_ppo_eval_rewards.txt" % env_id, eval_rewards)
+            episodesnp = np.array(episodes)
+            eval_rewardsnp = np.array(eval_rewards)
+            np.savetxt(arguments.WORK_PATH + "/Data/mappo/%s_ppo_episodes.txt" % env_id, episodesnp)
+            np.savetxt(arguments.WORK_PATH + "/Data/mappo/%s_ppo_eval_rewards.txt" % env_id, eval_rewardsnp)
 
-    plt.figure()
-    plt.plot(episodes, eval_rewards)
-    plt.title("%s" % env_id)
-    plt.xlabel("Episode")
-    plt.ylabel("Average Reward")
-    plt.legend(["PPO"])
-    plt.savefig(arguments.WORK_PATH + "/Data/mappo/%s_ppo.png" % env_id)
+            plt.figure()
+            plt.plot(episodesnp, eval_rewardsnp)
+            plt.title("%s" % env_id)
+            plt.xlabel("Episode")
+            plt.ylabel("Average Reward")
+            plt.legend(["PPO"])
+            plt.savefig(arguments.WORK_PATH + "/Data/mappo/%s_ppo.png" % env_id)
 
 
 if __name__ == "__main__":

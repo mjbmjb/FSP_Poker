@@ -217,7 +217,7 @@ class DQN(nn.Module):
 
     def __init__(self):
         super(DQN, self).__init__()
-        self.fc1 = nn.Linear(133, 512)
+        self.fc1 = nn.Linear(486, 512)
         self.fc1_bn = nn.BatchNorm1d(512)
         # self.fc2 = nn.Linear(64,64)
         # self.fc2_bn = nn.BatchNorm1d(64)
@@ -321,16 +321,17 @@ class DQNOptim:
 #        self.steps_done += 1
         if sample > eps_threshold:
             action = self.model(
-                Variable(state)).data.max(1)[1].view(1, 1)
-            return arguments.LongTensor(action)
+                Variable(state)).data.max(1)[1].view((1, 1))
+            action = arguments.LongTensor(action)
 
         else:
             m = Categorical(arguments.dqn_init_policy)
             action = m.sample().view((1,1))
-            if arguments.gpu:
-                return action.cuda()
-            return  action
-    
+        
+        one_hot = torch.eye(game_settings.actions_count)[action.cpu()].squeeze(1)
+        if arguments.gpu:
+            return action.cuda(), one_hot.cuda()
+        return action , one_hot
     
     
     def plot_error(self):

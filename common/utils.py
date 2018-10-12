@@ -26,6 +26,8 @@ def index_to_one_hot(index, dim):
                else eye[index]
     return one_hot
 
+def cut_action(actions, action_space):
+    return [action[0:item.n] for action, item in zip(actions,action_space)]
 
 def to_tensor(x, use_cuda = arguments.gpu, dtype="float"):
     FloatTensor = th.cuda.FloatTensor if use_cuda else th.FloatTensor

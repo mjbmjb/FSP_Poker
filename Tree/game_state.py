@@ -134,7 +134,12 @@ class GameState(object):
 
             return
         
-        
+        # if only one player is active, and it's spent >= self.max_bet
+        if self.active.sum().item() == 1:
+
+            if self.spent[self.active].sum() >= self.max_bet:
+                self.finished = True
+                return
 
         # [3.0] if all active player bets same amount, which means they are reaching next street
 
@@ -369,7 +374,8 @@ class GameState(object):
         else:
             assert(True)
         return terminal_value
-        
+
+
         
         
 # if __name__ == '__main__':

@@ -79,7 +79,7 @@ class MAPPO(PPO):
                  optimizer_type="adam", entropy_reg=0.01,
                  max_grad_norm=0.5, batch_size=128, episodes_before_train=500,
                  epsilon_start=0.9, epsilon_end=0.01, epsilon_decay=200,
-                 use_cuda=True, is_hidden=False,pad_dim=None):
+                 use_cuda=True, is_hidden=False,obspad_dim=None):
 
         super(MAPPO, self).__init__(env, state_dim, action_dim,
                  memory_capacity, max_steps,
@@ -138,7 +138,7 @@ class MAPPO(PPO):
         self.current_loss_actor = 0
         self.current_loss_critic = 0
 
-        self.pad_dim = pad_dim
+        self.obspad_dim = obspad_dim
 
     # predict softmax action based on state
     def _softmax_action(self, agent, state, hidden):
@@ -164,6 +164,7 @@ class MAPPO(PPO):
             action = np.random.choice(self.action_dim)
         else:
             action = np.argmax(softmax_action)
+        action = th.IntTensor([action], device = self.device)
         return action, hidden
 
     # choose an action based on state for execution
@@ -175,7 +176,6 @@ class MAPPO(PPO):
     # TODO add entrophy
     def dist_exploration_action(self, agent, state, hidden):
         softmax_action, hidden = self._softmax_action(agent, state, hidden)
-        assert((softmax_action >= 0).sum().item() == 5)
         m = Categorical(to_tensor(softmax_action))
         action = m.sample()
         return action, hidden
@@ -206,7 +206,7 @@ class MAPPO(PPO):
         advantage, deltas = np.zeros_like(rewards), np.zeros_like(rewards)
         rewards, values = np.array(rewards), np.array(values)
         for a in range(self.n_agent):
-            prev_value = 0
+            prev_value = values[-1,a]
             # TODO determine the value of pre_advantage
             prev_advantage = 0
             for t in reversed(range(0, len(rewards))):
@@ -216,13 +216,13 @@ class MAPPO(PPO):
                 prev_value = values[t,a]
                 prev_advantage = advantage[t,a]
         returns = values + advantage
-        # advantage = (advantage - advantage.mean()) / advantage.std()
+        advantage = (advantage - advantage.mean()) / advantage.std()
         return returns , advantage
 
 
     def interact(self):
         if (self.max_steps is not None) and (self.n_steps % self.max_steps == 0):
-            self.env_state = padobs(self.env.reset(), self.pad_dim)
+            self.env_state = padobs(self.env.reset(), self.obspad_dim)
             if self.is_hidden:
                 self.ac_hidden= [(th.zeros(1, self.hidden_size,device=self.device), th.zeros(1, self.hidden_size,device=self.device))\
                                  for _ in range(self.n_agent)]
@@ -245,11 +245,11 @@ class MAPPO(PPO):
                 self.c_hidden = [(h[0].detach(), h[1].detach()) for h in self.c_hidden]
             hidden.append(tuple([list(self.ac_hidden), list(self.c_hidden)]))
 
-            action, self.ac_hidden = zip(*[self.dist_exploration_action(agent, self.env_state, self.ac_hidden[agent])\
+            action, self.ac_hidden = zip(*[self.exploration_action(agent, self.env_state, self.ac_hidden[agent])\
                       for agent in range(self.n_agent)])
             one_hot_action = index_to_one_hot(action, dim=self.action_dim)
             next_state, reward, done, _ = self.env.step(one_hot_action)
-            next_state = padobs(next_state,self.pad_dim)
+            next_state = padobs(next_state, self.obspad_dim)
             actions.append(action)
             if all(done) and self.done_penalty is not None:
                 reward = self.done_penalty
@@ -262,7 +262,7 @@ class MAPPO(PPO):
             final_state = next_state
             self.env_state = next_state
             if all(done):
-                self.env_state = padobs(self.env.reset(), self.pad_dim)
+                self.env_state = padobs(self.env.reset(), self.obspad_dim)
                 break
 
         # discount reward
@@ -375,21 +375,21 @@ class MAPPO(PPO):
                 ac_hidden= [(th.zeros(1, self.hidden_size,device=self.device), th.zeros(1, self.hidden_size,device=self.device))\
                                  for _ in range(self.n_agent)]
 
-            state = padobs(env.reset(), self.pad_dim)
-            action, ac_hidden = zip(*[self.dist_exploration_action(agent, state, ac_hidden[agent]) \
+            state = padobs(env.reset(), self.obspad_dim)
+            action, ac_hidden = zip(*[self.action(agent, state, ac_hidden[agent]) \
                                       for agent in range(self.n_agent)])
             one_hot_action = index_to_one_hot(action, self.action_dim)
             state, reward, done, info = env.step(one_hot_action)
-            state = padobs(state, self.pad_dim)
+            state = padobs(state, self.obspad_dim)
             done = done[0] if isinstance(done, list) else done
             rewards_i.append(reward)
             infos_i.append(info)
             while not done and steps < eval_steps:
-                action, ac_hidden = zip(*[self.dist_action(agent, state, ac_hidden[agent]) \
+                action, ac_hidden = zip(*[self.action(agent, state, ac_hidden[agent]) \
                                           for agent in range(self.n_agent)])
                 one_hot_action = index_to_one_hot(action, self.action_dim)
                 state, reward, done, info = env.step(one_hot_action)
-                state = padobs(state, self.pad_dim)
+                state = padobs(state, self.obspad_dim)
                 done = done[0] if isinstance(done, list) else done
                 rewards_i.append(reward)
                 infos_i.append(info)

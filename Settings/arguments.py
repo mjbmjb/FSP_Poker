@@ -28,8 +28,8 @@ multi_agent = True
 # list of pot-scaled bet sizes to use in tree
 
 # dict of model
-# rl_model = 'dqn'
-rl_model = 'maddpg'
+rl_model = 'dqn'
+#rl_model = 'maddpg'
 sl_model = 'mlr'
 
 # culcate by how many step per episoid
@@ -39,7 +39,7 @@ sl_update = 40
 # params for rl
 gamma = 0.99
 
-dim_obs = 133
+dim_obs = 486
 # params for sl
 sl_start = 500
 
@@ -73,7 +73,7 @@ cfr_skip_iters = 500
 net = '{nn.Linear(input_size, 50), nn.PReLU(), nn.Linear(50, output_size)}'
 loss_F = F.nll_loss
 loss = nn.MSELoss()
-dqn_init_policy = Tensor([0.01,0.50,0.45,0.01,0.01,0.01,0.01])
+dqn_init_policy = Tensor([0.1,0.2,0.2,0.3,0.2])
 reservoir = True
 # how often to save the model during training
 save_epoch = 100
@@ -88,14 +88,12 @@ learning_rate = 0.001
 #
 eta = 0.5
 
-#table update number
+# table update number
 sl_update_num = 128
 
-evalation = True
-#load model
-load_model = True
-load_model_num = 110000
-
+evalation = False
+load_model = False
+load_model_num = 10000
 muilt_gpu = False
 
 bet_bucket = 5

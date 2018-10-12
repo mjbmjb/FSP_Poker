@@ -190,11 +190,11 @@ class MAPPO(PPO):
         return value
 
     # discount roll out rewards
-    def _discount_reward(self, rewards, values):
+    def _discount_reward(self, next_value, rewards, values):
         advantage, deltas = np.zeros_like(rewards), np.zeros_like(rewards)
         rewards, values = np.array(rewards), np.array(values)
         for a in range(self.n_agent):
-            prev_value = 0
+            prev_value = next_value
             # TODO determine the value of pre_advantage
             prev_advantage = 0
             for t in reversed(range(0, len(rewards))):
@@ -250,11 +250,11 @@ class MAPPO(PPO):
             self.episode_done = True
             # FIXME episodes
             self.n_episodes += 1
-            # final_action = [self.action(agent, final_state) for agent in range(self.n_agent)]
-            # final_value = [self.value(agent,final_state,final_action) for agent in range(self.n_agent)]
+            final_action = [self.action(agent, final_state) for agent in range(self.n_agent)]
+            final_value = [self.value(agent,final_state,final_action) for agent in range(self.n_agent)]
             # 这里final_value是用来做TD(K)的最后一项
         # TODO 是否需要去掉discount
-        dis_rewards, advantages = self._discount_reward(rewards, values)
+        dis_rewards, advantages = self._discount_reward(final_value, rewards, values)
         # print(self.n_steps)
         self.n_steps += 1
         self.memory.push(states, actions, dis_rewards, advantages)
