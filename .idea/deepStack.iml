@@ -4,7 +4,7 @@
     <content url="file://$MODULE_DIR$">
       <excludeFolder url="file://$MODULE_DIR$/venv" />
     </content>
-    <orderEntry type="jdk" jdkName="Remote Python 3.6.2 (ssh://carc@10.249.145.194:22/home/carc/anaconda3/envs/pytorch/bin/python)" jdkType="Python SDK" />
+    <orderEntry type="jdk" jdkName="Remote Python 3.6.2 (ssh://carc@10.249.144.229:22/home/carc/anaconda3/envs/pytorch/bin/python)" jdkType="Python SDK" />
     <orderEntry type="sourceFolder" forTests="false" />
   </component>
   <component name="PyDocumentationSettings">

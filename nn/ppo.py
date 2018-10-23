@@ -101,7 +101,7 @@ class PPO:
         self.max_grad_norm = max_grad_norm
         self.batch_size = batch_size
         self.episodes_before_train = episodes_before_train
-        self.target_tau = 0.01
+
 
         # params for epsilon greedy
         self.epsilon_start = epsilon_start

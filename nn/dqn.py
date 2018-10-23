@@ -72,7 +72,7 @@ from torch.nn.utils.convert_parameters import vector_to_parameters, parameters_t
 
 import Settings.arguments as arguments
 import Settings.game_settings as game_settings
-from torch.nn.init import normal, calculate_gain, kaiming_normal
+from torch.nn.init import normal_
 
 # if gpu is to be used
 use_cuda = torch.cuda.is_available()
@@ -106,8 +106,8 @@ Transition = namedtuple('Transition',
 
 def weights_init(m):
     if isinstance(m, nn.Linear):
-        normal(m.weight.data, mean=0.3, std=0.1)
-        normal(m.bias.data, mean=0, std=0.1)
+        normal_(m.weight.data, mean=0.3, std=0.1)
+        normal_(m.bias.data, mean=0, std=0.1)
 
 #def reservoir_sample(data, K):
 #    sample = []
@@ -217,7 +217,7 @@ class DQN(nn.Module):
 
     def __init__(self):
         super(DQN, self).__init__()
-        self.fc1 = nn.Linear(486, 512)
+        self.fc1 = nn.Linear(arguments.dim_obs, 512)
         self.fc1_bn = nn.BatchNorm1d(512)
         # self.fc2 = nn.Linear(64,64)
         # self.fc2_bn = nn.BatchNorm1d(64)

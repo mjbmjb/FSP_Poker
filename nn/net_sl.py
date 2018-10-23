@@ -19,7 +19,7 @@ import torch.nn.functional as F
 import torch.optim as optim
 from torch.autograd import Variable
 from torch.distributions import Categorical
-from torch.nn.init import normal, calculate_gain, kaiming_normal
+from torch.nn.init import normal_
 
 from sklearn.metrics import log_loss
 
@@ -35,8 +35,8 @@ Tensor = FloatTensor
 
 def weights_init(m):
     if isinstance(m, nn.Linear):
-        normal(m.weight.data,mean=0.3, std=0.1)
-        normal(m.bias.data,mean=0.0, std=0.1)
+        normal_(m.weight.data,mean=0.0, std=0.1)
+        normal_(m.bias.data,mean=0.0, std=0.1)
 
 def reservoir_sample(memory, K):
     data = memory.memory
@@ -67,7 +67,7 @@ class SLNet(nn.Module):
         self.fc3 = nn.Linear(1024,1024)
         self.fc3_bn = nn.BatchNorm1d(1024)
         self.output = nn.Linear(1024,5)
-        self.logsoftmax = nn.LogSoftmax()
+        self.logsoftmax = nn.functional.log_softmax
         
     def forward(self, x):
         x = self.fc1(x)
@@ -82,7 +82,7 @@ class SLNet(nn.Module):
         x = F.relu(self.fc3_bn(x))
 #        x = F.relu(x)
         output = self.output(x)
-        output = self.logsoftmax(output)
+        output = self.logsoftmax(output,dim=1)
         return output
 
     def forward_fc(self, x):

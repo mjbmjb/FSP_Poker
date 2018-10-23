@@ -141,13 +141,14 @@ class MAPPO(PPO):
         self.obspad_dim = obspad_dim
 
     # predict softmax action based on state
-    def _softmax_action(self, agent, state, hidden):
+    def _softmax_action(self, agent, state, hidden, is_target = False):
         state_var = to_tensor(state[agent], self.use_cuda).unsqueeze(0)
+        acting_actor = self.actors_target if is_target else self.actors
         if self.is_hidden:
-            action, hidden_r = self.actors[agent](state_var, hidden)
+            action, hidden_r = acting_actor[agent](state_var, hidden)
             softmax_action_var = th.exp(action)
         else:
-            softmax_action_var = th.exp(self.actors[agent](state_var))
+            softmax_action_var = th.exp(acting_actor[agent](state_var))
         if self.use_cuda:
             softmax_action = softmax_action_var.data.cpu()
         else:
@@ -157,7 +158,7 @@ class MAPPO(PPO):
 
     # choose an action based on state with random noise added for exploration in training
     def exploration_action(self, agent, state, hidden):
-        softmax_action, hidden = self._softmax_action(agent, state, hidden)
+        softmax_action, hidden = self._softmax_action(agent, state, hidden, is_target=True)
         epsilon = self.epsilon_end + (self.epsilon_start - self.epsilon_end) * \
                                   np.exp(-1. * self.n_steps / self.epsilon_decay)
         if np.random.rand() < epsilon:
@@ -175,7 +176,7 @@ class MAPPO(PPO):
 
     # TODO add entrophy
     def dist_exploration_action(self, agent, state, hidden):
-        softmax_action, hidden = self._softmax_action(agent, state, hidden)
+        softmax_action, hidden = self._softmax_action(agent, state, hidden, is_target=True)
         m = Categorical(to_tensor(softmax_action))
         action = m.sample()
         return action, hidden
@@ -194,7 +195,7 @@ class MAPPO(PPO):
         action_var = th.cat(actions, 0).unsqueeze(0)
         # action = index_to_one_hot(action, self.action_dim)
         # action_var = to_tensor([action], self.use_cuda)
-        value_var, hidden_r = self.critics[agent](state_var, action_var, hidden)
+        value_var, hidden_r = self.critics_target[agent](state_var, action_var, hidden)
         if self.use_cuda:
             value = value_var.data.cpu()
         else:
@@ -245,7 +246,7 @@ class MAPPO(PPO):
                 self.c_hidden = [(h[0].detach(), h[1].detach()) for h in self.c_hidden]
             hidden.append(tuple([list(self.ac_hidden), list(self.c_hidden)]))
 
-            action, self.ac_hidden = zip(*[self.exploration_action(agent, self.env_state, self.ac_hidden[agent])\
+            action, self.ac_hidden = zip(*[self.dist_exploration_action(agent, self.env_state, self.ac_hidden[agent])\
                       for agent in range(self.n_agent)])
             one_hot_action = index_to_one_hot(action, dim=self.action_dim)
             next_state, reward, done, _ = self.env.step(one_hot_action)
@@ -376,7 +377,7 @@ class MAPPO(PPO):
                                  for _ in range(self.n_agent)]
 
             state = padobs(env.reset(), self.obspad_dim)
-            action, ac_hidden = zip(*[self.action(agent, state, ac_hidden[agent]) \
+            action, ac_hidden = zip(*[self.dist_action(agent, state, ac_hidden[agent]) \
                                       for agent in range(self.n_agent)])
             one_hot_action = index_to_one_hot(action, self.action_dim)
             state, reward, done, info = env.step(one_hot_action)
@@ -385,7 +386,7 @@ class MAPPO(PPO):
             rewards_i.append(reward)
             infos_i.append(info)
             while not done and steps < eval_steps:
-                action, ac_hidden = zip(*[self.action(agent, state, ac_hidden[agent]) \
+                action, ac_hidden = zip(*[self.dist_action(agent, state, ac_hidden[agent]) \
                                           for agent in range(self.n_agent)])
                 one_hot_action = index_to_one_hot(action, self.action_dim)
                 state, reward, done, info = env.step(one_hot_action)

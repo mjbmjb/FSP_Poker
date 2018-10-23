@@ -11,7 +11,7 @@ Created on Sun Aug 20 00:55:09 2017
 # the number of players in the game
 #players_count = 2
 # the number of betting rounds in the game
-streets_count = 4
+streets_count = 2
 
 # IDs for each player and chance
 # @field chance `0`

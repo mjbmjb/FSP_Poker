@@ -66,12 +66,15 @@ def onehot_from_logits(logits, eps=0.0):
 
 
 # modified for PyTorch from https://github.com/ericjang/gumbel-softmax/blob/master/Categorical%20VAE.ipynb
-def sample_gumbel(shape, eps=1e-20, tens_type=torch.FloatTensor):
+def sample_gumbel(shape, eps=1e-20, tens_type=arguments.Tensor):
     """Sample from Gumbel(0, 1)"""
-    if tens_type == Variable:
-        U = Variable(arguments.Tensor(shape).uniform_(), requires_grad=False)
-    else:
-        U = Variable(tens_type(shape).uniform_(), requires_grad=False)
+    # if tens_type == Variable:
+    #     U = Variable(arguments.Tensor(shape).uniform_(), requires_grad=False)
+    # else:
+    #     U = Variable(tens_type(shape).uniform_(), requires_grad=False)
+
+    # modify to pytorch 1.0
+    U = arguments.Tensor(shape, device = arguments.device).uniform_()
     return -torch.log(-torch.log(U + eps) + eps)
 
 # modified for PyTorch from https://github.com/ericjang/gumbel-softmax/blob/master/Categorical%20VAE.ipynb

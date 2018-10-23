@@ -88,7 +88,7 @@ def save_model(episod):
         torch.save(rl_model, path + '_' + str(agent.ID) + '_' + '.rl')
         # TODO add rl memory save
         # 2.0 save the memory of sl
-        save_memory(path + '_')
+        # save_memory(path + '_')
 
         if arguments.gpu:
             agent.sl.model.cuda()
@@ -214,7 +214,7 @@ def single_train():
             current_player = state.current_player
             # Select and perform an action
             #            print(state_tensor.size(1))
-            assert (state_tensor.size(1) == 486)
+            assert (state_tensor.size(1) == arguments.dim_obs)
 
             if flag == 0:
                 # sl
@@ -468,7 +468,8 @@ def gym_maddpg_train():
                 env.render()
             obs = obs_
 
-        # env.render()
+            if arguments.evalation:
+                env.render()
 
         # if i_episode % 100 == 0:
         print('episode:%d memory:%d' % (i_episode, len(maddpg.memory.memory)))
@@ -617,7 +618,7 @@ def gym_ppo_train():
     EVAL_INTERVAL = 50
 
     # roll out n steps
-    ROLL_OUT_N_STEPS = 100
+    ROLL_OUT_N_STEPS = 50
     # only remember the latest ROLL_OUT_N_STEPS
     MEMORY_CAPACITY = ROLL_OUT_N_STEPS
     # MEMORY_CAPACITY = 50000
@@ -625,9 +626,9 @@ def gym_ppo_train():
     BATCH_SIZE = ROLL_OUT_N_STEPS
 
     TARGET_UPDATE_STEPS = 20
-    TARGET_TAU = 0.01
+    TARGET_TAU = 0.99
 
-    REWARD_DISCOUNTED_GAMMA = 0.95
+    REWARD_DISCOUNTED_GAMMA = 0.0
     TAU = 0.95
     ENTROPY_REG = 0.01
     #
@@ -637,9 +638,9 @@ def gym_ppo_train():
     CRITIC_LOSS = "huber"
     MAX_GRAD_NORM = None
 
-    EPSILON_START = 0.99
+    EPSILON_START = 0.50
     EPSILON_END = 0.05
-    EPSILON_DECAY = 1000
+    EPSILON_DECAY = 3000
 
     mappo = LSTMMAPPO(n_agent=n_agent, env=env, memory_capacity=MEMORY_CAPACITY,
               state_dim=state_dim, action_dim=action_dim,
@@ -676,7 +677,12 @@ def gym_ppo_train():
             print("Episode %d, Average Reward %s" % (mappo.n_episodes + 1, str(rewards_mu)))
             episodes.append(mappo.n_episodes + 1)
             # TODO add multi agent reward
-            eval_rewards.append(rewards_mu[0])
+
+            # FIXME drop the first reward
+            if rewards_mu[0]  > -500:
+                eval_rewards.append(rewards_mu[0])
+            else:
+                eval_rewards.append(rewards_mu[0] / 100)
             mappo.plot_error_vis()
 
             episodesnp = np.array(episodes)
@@ -694,4 +700,6 @@ def gym_ppo_train():
 
 
 if __name__ == "__main__":
-    gym_ppo_train()
+    # gym_ppo_train()
+    # gym_maddpg_train()
+    single_train()

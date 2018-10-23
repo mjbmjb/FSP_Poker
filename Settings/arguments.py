@@ -39,7 +39,7 @@ sl_update = 40
 # params for rl
 gamma = 0.99
 
-dim_obs = 486
+dim_obs = 88
 # params for sl
 sl_start = 500
 
@@ -93,7 +93,7 @@ sl_update_num = 128
 
 evalation = False
 load_model = False
-load_model_num = 10000
+load_model_num = 20000
 muilt_gpu = False
 
 bet_bucket = 5

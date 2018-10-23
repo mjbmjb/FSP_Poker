@@ -30,7 +30,7 @@ class GameState(object):
     
     
     def __init__(self):
-        self.current_player = 2
+        self.current_player = game_settings.start_player
         self.atype = ""
         self.street = 0
         self.board  = arguments.IntTensor(game_settings.board_card_count).fill_(-1)
@@ -137,8 +137,8 @@ class GameState(object):
         # if only one player is active, and it's spent >= self.max_bet
         if self.active.sum().item() == 1:
 
-            if self.spent[self.active].sum() >= self.max_bet:
-                self.finished = True
+            if self.bets[self.active].sum() >= self.max_bet:
+                self.terminal = True
                 return
 
         # [3.0] if all active player bets same amount, which means they are reaching next street
@@ -352,8 +352,8 @@ class GameState(object):
         if type == 'f':
             self.action_taken[self.current_player, self.street,-1] = 1
             return
-
-        raise NotImplementedError
+        # FIXME there wiil be 11101 in raise history
+        # raise NotImplementedError
 
     def get_terminal_value(self):
         assert(self.terminal)
