@@ -29,22 +29,19 @@ def index_to_one_hot(index, dim):
 def cut_action(actions, action_space):
     return [action[0:item.n] for action, item in zip(actions,action_space)]
 
-def to_tensor(x, use_cuda = arguments.gpu, dtype="float"):
-    FloatTensor = th.cuda.FloatTensor if use_cuda else th.FloatTensor
-    LongTensor = th.cuda.LongTensor if use_cuda else th.LongTensor
-    ByteTensor = th.cuda.ByteTensor if use_cuda else th.ByteTensor
+def to_tensor(x, device = arguments.device, dtype="float"):
     if dtype == "float":
         x = np.array(x, dtype=np.float64).tolist()
-        return FloatTensor(x)
+        return th.FloatTensor(x).to(device)
     elif dtype == "long":
         x = np.array(x, dtype=np.long).tolist()
-        return LongTensor(x)
+        return th.LongTensor(x).to(device)
     elif dtype == "byte":
         x = np.array(x, dtype=np.byte).tolist()
-        return ByteTensor(x)
+        return th.ByteTensor(x).to(device)
     else:
         x = np.array(x, dtype=np.float64).tolist()
-        return FloatTensor(x)
+        return th.FloatTensor(x).to(device)
 
 
 def agg_double_list(l):

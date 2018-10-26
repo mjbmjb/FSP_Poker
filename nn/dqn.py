@@ -242,7 +242,7 @@ class DQN(nn.Module):
         # x = self.fc2(x)
         # x = F.relu(self.fc2_bn(x))
         x = self.fc3(x)
-        x = F.relu(self.fc3_bn(x))
+        x = self.fc3_bn(x)
         return x
 
 

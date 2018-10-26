@@ -597,8 +597,8 @@ def gym_ppo_train():
     from common.utils import agg_double_list
 
     # env_id = 'simple_tag'
-    # env_id = 'simple_spread'
-    env_id = 'simple_speaker_listener'
+    env_id = 'simple_spread'
+    # env_id = 'simple_speaker_listener'
     env = make_env(env_id)
     env.seed(1234)
     env_eval = make_env(env_id)
@@ -620,21 +620,21 @@ def gym_ppo_train():
     # roll out n steps
     ROLL_OUT_N_STEPS = 50
     # only remember the latest ROLL_OUT_N_STEPS
-    MEMORY_CAPACITY = ROLL_OUT_N_STEPS
+    MEMORY_CAPACITY = ROLL_OUT_N_STEPS * 10
     # MEMORY_CAPACITY = 50000
     # only use the latest ROLL_OUT_N_STEPS for training PPO
-    BATCH_SIZE = ROLL_OUT_N_STEPS
+    BATCH_SIZE = ROLL_OUT_N_STEPS * 10
 
     TARGET_UPDATE_STEPS = 20
     TARGET_TAU = 0.99
 
-    REWARD_DISCOUNTED_GAMMA = 0.0
-    TAU = 0.95
+    REWARD_DISCOUNTED_GAMMA = 0.3
+    TAU = 0.8
     ENTROPY_REG = 0.01
     #
     DONE_PENALTY = None
 
-    HIDDEN_SIZE = 512
+    HIDDEN_SIZE = 256
     CRITIC_LOSS = "huber"
     MAX_GRAD_NORM = None
 
@@ -642,7 +642,7 @@ def gym_ppo_train():
     EPSILON_END = 0.05
     EPSILON_DECAY = 3000
 
-    mappo = LSTMMAPPO(n_agent=n_agent, env=env, memory_capacity=MEMORY_CAPACITY,
+    mappo = MAPPO(n_agent=n_agent, env=env, memory_capacity=MEMORY_CAPACITY,
               state_dim=state_dim, action_dim=action_dim,
               batch_size=BATCH_SIZE, entropy_reg=ENTROPY_REG,
               done_penalty=DONE_PENALTY, roll_out_n_steps=ROLL_OUT_N_STEPS, max_steps=MAX_STEPS,
@@ -653,7 +653,7 @@ def gym_ppo_train():
               epsilon_decay=EPSILON_DECAY, max_grad_norm=MAX_GRAD_NORM,
               episodes_before_train=EPISODES_BEFORE_TRAIN,
               critic_loss=CRITIC_LOSS,
-              use_cuda=arguments.gpu, is_hidden=True, obspad_dim=obspad_dim)
+              use_cuda=arguments.gpu, obspad_dim=obspad_dim)
 
     if arguments.load_model:
         mappo.load("../Data/Model/(mappo)Iter:%d" % (arguments.load_model_num))
@@ -667,7 +667,7 @@ def gym_ppo_train():
             rewards, _ = mappo.evaluation(env_eval, 100, EVAL_EPISODES)
             continue
         # print("Episode %d" % ppo.n_episodes )
-        if mappo.n_episodes >= EPISODES_BEFORE_TRAIN:
+        if mappo.n_episodes >= EPISODES_BEFORE_TRAIN and mappo.n_episodes % 10 == 0:
             mappo.train()
         if mappo.episode_done and ((mappo.n_episodes + 1) % EVAL_INTERVAL == 0)\
                               and mappo.n_episodes >= EPISODES_BEFORE_TRAIN:
@@ -700,6 +700,6 @@ def gym_ppo_train():
 
 
 if __name__ == "__main__":
-    # gym_ppo_train()
+    gym_ppo_train()
     # gym_maddpg_train()
-    single_train()
+    # single_train()

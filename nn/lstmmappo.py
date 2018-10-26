@@ -79,7 +79,7 @@ class MAPPO(PPO):
                  optimizer_type="adam", entropy_reg=0.01,
                  max_grad_norm=0.5, batch_size=128, episodes_before_train=500,
                  epsilon_start=0.9, epsilon_end=0.01, epsilon_decay=200,
-                 use_cuda=True, is_hidden=False,obspad_dim=None):
+                 use_cuda=True, is_hidden=True, obspad_dim=None):
 
         super(MAPPO, self).__init__(env, state_dim, action_dim,
                  memory_capacity, max_steps,
@@ -246,7 +246,7 @@ class MAPPO(PPO):
                 self.c_hidden = [(h[0].detach(), h[1].detach()) for h in self.c_hidden]
             hidden.append(tuple([list(self.ac_hidden), list(self.c_hidden)]))
 
-            action, self.ac_hidden = zip(*[self.dist_exploration_action(agent, self.env_state, self.ac_hidden[agent])\
+            action, self.ac_hidden = zip(*[self.exploration_action(agent, self.env_state, self.ac_hidden[agent])\
                       for agent in range(self.n_agent)])
             one_hot_action = index_to_one_hot(action, dim=self.action_dim)
             next_state, reward, done, _ = self.env.step(one_hot_action)

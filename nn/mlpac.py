@@ -18,7 +18,8 @@ class Actor(nn.Module):
     def forward(self, state):
         out = nn.functional.relu(self.fc1(state))
         out = nn.functional.relu(self.fc2(out))
-        out = self.output_act(self.fc3(out), dim=0)
+        out = self.fc3(out)
+        out = self.output_act(out, dim=0)
         return out
 
 class Critic(nn.Module):

@@ -18,8 +18,8 @@ import os
 WORK_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), '..')) + '/'
 # whether to run on GPU
 # gpu = torch.cuda.is_available()
-gpu = True
-device = torch.device("cuda" if gpu else "cpu")
+gpu = False
+device = torch.device("cuda:0" if gpu else "cpu")
 #
 num_process = 15
 # gpu = False
@@ -93,7 +93,7 @@ sl_update_num = 128
 
 evalation = False
 load_model = False
-load_model_num = 20000
+load_model_num = 2000
 muilt_gpu = False
 
 bet_bucket = 5

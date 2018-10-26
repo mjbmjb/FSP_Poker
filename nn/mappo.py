@@ -10,7 +10,7 @@ from copy import deepcopy
 # from common.Agent import Agent
 from nn.mlpac import Actor, MCritic
 from nn.ppo import PPO
-from common.utils import to_tensor, index_to_one_hot, logpro2entropy
+from common.utils import to_tensor, index_to_one_hot, logpro2entropy, padobs
 from nn.misc import soft_update
 import Settings.arguments as arguments
 
@@ -70,15 +70,15 @@ class MAPPO(PPO):
     def __init__(self,n_agent, env, state_dim, action_dim,
                  memory_capacity=100000, max_steps=None,
                  roll_out_n_steps=1, target_tau=1.,
-                 target_update_steps=5, clip_param=0.2,
+                 target_update_steps=5, clip_param=0.1,
                  reward_gamma=0.99, reward_scale=1., tau=0.95 ,done_penalty=None,
                  actor_hidden_size=32, critic_hidden_size=32,
                  actor_output_act=nn.functional.log_softmax, critic_loss="mse",
-                 actor_lr=0.001, critic_lr=0.001,
+                 actor_lr=0.01, critic_lr=0.01,
                  optimizer_type="adam", entropy_reg=0.01,
                  max_grad_norm=0.5, batch_size=128, episodes_before_train=500,
                  epsilon_start=0.9, epsilon_end=0.01, epsilon_decay=200,
-                 use_cuda=True):
+                 use_cuda=True, obspad_dim=None, device = arguments.device):
 
         super(MAPPO, self).__init__(env, state_dim, action_dim,
                  memory_capacity, max_steps,
@@ -104,6 +104,8 @@ class MAPPO(PPO):
         self.critics_target = deepcopy(self.critics)
         self.memory = ReplayMemory(memory_capacity)
 
+        self.obspad_dim = obspad_dim
+
         if self.optimizer_type == "adam":
             self.actor_optimizer = [Adam(x.parameters(), lr=self.actor_lr) \
                                     for x in self.actors]
@@ -114,14 +116,13 @@ class MAPPO(PPO):
                                     for x in self.actors]
             self.critic_optimizer = [RMSprop(x.parameters(), lr=self.critic_lr) \
                                      for x in self.critics]
+        self.device = device
 
-        self.use_cuda = use_cuda
-        if self.use_cuda:
-            for i in range(n_agent):
-                self.actors[i].cuda()
-                self.critics[i].cuda()
-                self.actors_target[i].cuda()
-                self.critics_target[i].cuda()
+        for i in range(n_agent):
+            self.actors[i].to(self.device)
+            self.critics[i].to(self.device)
+            self.actors_target[i].to(self.device)
+            self.critics_target[i].to(self.device)
 
         self.n_episodes = 0
         self.n_steps = 0
@@ -134,14 +135,10 @@ class MAPPO(PPO):
 
     # predict softmax action based on state
     def _softmax_action(self, agent, state):
-        state_var = to_tensor(state[agent], self.use_cuda)
-        softmax_action_var = th.exp(self.actors[agent](state_var))
-        if self.use_cuda:
-            softmax_action = softmax_action_var.data.cpu()
-        else:
-            softmax_action = softmax_action_var.data
+        state_var = to_tensor(state[agent])
+        softmax_action_var = th.exp(self.actors[agent](state_var)).detach()
 
-        return softmax_action
+        return softmax_action_var
 
     # choose an action based on state with random noise added for exploration in training
     def exploration_action(self, agent, state):
@@ -160,10 +157,13 @@ class MAPPO(PPO):
         action = np.argmax(softmax_action)
         return action
 
+    def log_action(self, agent ):
+        pass
+
     # TODO add entrophy
     def dist_exploration_action(self, agent, state):
         softmax_action = self._softmax_action(agent, state)
-        assert((softmax_action >= 0).sum().item() == 5)
+        # assert((softmax_action >= 0).sum().item() == 5)
         m = Categorical(to_tensor(softmax_action))
         action = m.sample()
         return action
@@ -176,25 +176,32 @@ class MAPPO(PPO):
         return action
 
     # evaluate value for a state-action pair
-    def value(self, agent, states, actions):
-        state_var_list = [to_tensor(states[i], self.use_cuda) for i in range(self.n_agent)]
-        state_var = th.cat(state_var_list, 0).unsqueeze(0)
-        action_var = th.cat(actions, 0).unsqueeze(0)
-        # action = index_to_one_hot(action, self.action_dim)
-        # action_var = to_tensor([action], self.use_cuda)
-        value_var = self.critics[agent](state_var, action_var)
-        if self.use_cuda:
-            value = value_var.data.cpu()
+    def value(self, agent, states, actions, is_target = False):
+        if isinstance(states, list):
+            state_var_list = [to_tensor(states[i], self.device) for i in range(self.n_agent)]
+            state_var = th.cat(state_var_list, 0).unsqueeze(0)
+            action_var = th.cat(actions, 0).unsqueeze(0)
         else:
-            value = value_var.data
-        return value
+            state_var = states
+            action_var = actions
+
+        mask = th.Tensor(action_var.shape).to(self.device).fill_(1)
+        mask[:, agent * self.action_dim:(agent + 1) * self.action_dim].fill_(0)
+        # action = index_to_one_hot(action, self.action_dim)
+        # action_var = to_tensor([action], self.device)
+        action_var = action_var * mask
+
+        acting_critic = self.critics_target if is_target else self.critics
+        value_var = acting_critic[agent](state_var, action_var).to(self.device)
+
+        return value_var
 
     # discount roll out rewards
-    def _discount_reward(self, next_value, rewards, values):
+    def _discount_reward(self, rewards, values):
         advantage, deltas = np.zeros_like(rewards), np.zeros_like(rewards)
         rewards, values = np.array(rewards), np.array(values)
         for a in range(self.n_agent):
-            prev_value = next_value
+            prev_value = values[-1,a]
             # TODO determine the value of pre_advantage
             prev_advantage = 0
             for t in reversed(range(0, len(rewards))):
@@ -204,13 +211,12 @@ class MAPPO(PPO):
                 prev_value = values[t,a]
                 prev_advantage = advantage[t,a]
         returns = values + advantage
-        # advantage = (advantage - advantage.mean()) / advantage.std()
+        advantage = (advantage - advantage.mean()) / advantage.std()
         return returns , advantage
-
 
     def interact(self):
         if (self.max_steps is not None) and (self.n_steps % self.max_steps == 0):
-            self.env_state = self.env.reset()
+            self.env_state = padobs(self.env.reset(), self.obspad_dim)
         states = []
         actions = []
         rewards = []
@@ -225,19 +231,20 @@ class MAPPO(PPO):
                       for agent in range(self.n_agent)]
             one_hot_action = index_to_one_hot(action, dim=self.action_dim)
             next_state, reward, done, _ = self.env.step(one_hot_action)
+            next_state = padobs(next_state, self.obspad_dim)
             actions.append(action)
             if all(done) and self.done_penalty is not None:
                 reward = self.done_penalty
             rewards.append(reward)
             # for advantage
-            value = [self.value(agent, self.env_state, one_hot_action) \
+            value = [self.value(agent, self.env_state, one_hot_action, is_target=True) \
                      for agent in range(self.n_agent)]
             values.append(value)
 
             final_state = next_state
             self.env_state = next_state
             if all(done):
-                self.env_state = self.env.reset()
+                self.env_state = padobs(self.env.reset(), self.obspad_dim)
                 break
 
         # discount reward
@@ -250,11 +257,11 @@ class MAPPO(PPO):
             self.episode_done = True
             # FIXME episodes
             self.n_episodes += 1
-            final_action = [self.action(agent, final_state) for agent in range(self.n_agent)]
-            final_value = [self.value(agent,final_state,final_action) for agent in range(self.n_agent)]
+            # final_action = [self.action(agent, final_state) for agent in range(self.n_agent)]
+            # final_value = [self.value(agent,final_state,final_action) for agent in range(self.n_agent)]
             # 这里final_value是用来做TD(K)的最后一项
         # TODO 是否需要去掉discount
-        dis_rewards, advantages = self._discount_reward(final_value, rewards, values)
+        dis_rewards, advantages = self._discount_reward(rewards, values)
         # print(self.n_steps)
         self.n_steps += 1
         self.memory.push(states, actions, dis_rewards, advantages)
@@ -268,7 +275,7 @@ class MAPPO(PPO):
 
         batch = self.memory.sample(self.batch_size)
         # batch x agent x state
-        states_var = to_tensor(batch.states, self.use_cuda)
+        states_var = to_tensor(batch.states, self.device)
         # batch x [agent_n * state_dim]
         whole_states_var = states_var.view(self.batch_size,-1)
         # batch x agent
@@ -277,16 +284,16 @@ class MAPPO(PPO):
         one_hot_actions = index_to_one_hot(action_var, self.action_dim)
         whole_ont_hot_actions = one_hot_actions.view(self.batch_size, -1)
         # batch x agent
-        returns_var = to_tensor(batch.rewards, self.use_cuda)
-        advantages_var = to_tensor(batch.advantages, self.use_cuda)
-        # rewards_var = to_tensor(batch.disrewards, self.use_cuda).view(-1, 1)
+        returns_var = to_tensor(batch.rewards, self.device)
+        advantages_var = to_tensor(batch.advantages, self.device)
+        # rewards_var = to_tensor(batch.disrewards, self.device).view(-1, 1)
 
         for agent in range(self.n_agent):
 
             # update critic network
             self.critic_optimizer[agent].zero_grad()
             target_values = returns_var[:,agent]
-            values = self.critics[agent](whole_states_var,whole_ont_hot_actions).squeeze()
+            values = self.value(agent, whole_states_var, whole_ont_hot_actions, is_target=False).squeeze()
             if self.critic_loss == "huber":
                 critic_loss = nn.functional.smooth_l1_loss(values, target_values)
             else:
@@ -303,18 +310,22 @@ class MAPPO(PPO):
             # advantages = returns_var[:,agent] - values
             # # normalizing advantages seems not working correctly here
             # advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-5)
+
+            # TODO advantage is not correct when using Qnet, so there use Qnet to replace advantage
             advantages = advantages_var[:,agent]
+            # advantages = target_values.detach()
+            advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-5)
             log_probs = self.actors[agent](states_var[:,agent,:])
             action_log_probs = th.gather(log_probs,dim=1, index=action_var[:,agent].unsqueeze(1))
-            # dist_entropy = logpro2entropy(log_probs)
+            dist_entropy = logpro2entropy(log_probs)
             old_action_log_probs = th.gather(self.actors_target[agent](states_var[:,agent,:]).detach(),
                                              dim=1, index=action_var[:,agent].unsqueeze(1))
             ratio = th.exp(action_log_probs - old_action_log_probs).squeeze()
             surr1 = ratio * advantages
             surr2 = th.clamp(ratio, 1.0 - self.clip_param, 1.0 + self.clip_param) * advantages
             # PPO's pessimistic surrogate (L^CLIP)
-            # actor_loss = -th.mean(th.min(surr1, surr2)) - dist_entropy * self.entropy_reg
-            actor_loss = -th.mean(th.min(surr1, surr2))
+            actor_loss = -th.mean(th.min(surr1, surr2)) - dist_entropy * self.entropy_reg
+            # actor_loss = -th.mean(th.min(surr1, surr2))
             actor_loss.backward()
             self.current_loss_actor = actor_loss.data
             if self.max_grad_norm is not None:
@@ -335,11 +346,12 @@ class MAPPO(PPO):
             steps = 0
             rewards_i = []
             infos_i = []
-            state = env.reset()
+            state = padobs(env.reset(), self.obspad_dim)
             action = [self.dist_action(agent, state)\
                       for agent in range(self.n_agent)]
             one_hot_action = index_to_one_hot(action, self.action_dim)
             state, reward, done, info = env.step(one_hot_action)
+            state = padobs(state, self.obspad_dim)
             done = done[0] if isinstance(done, list) else done
             rewards_i.append(reward)
             infos_i.append(info)
@@ -348,10 +360,11 @@ class MAPPO(PPO):
                           for agent in range(self.n_agent)]
                 one_hot_action = index_to_one_hot(action, self.action_dim)
                 state, reward, done, info = env.step(one_hot_action)
+                state = padobs(state, self.obspad_dim)
                 done = done[0] if isinstance(done, list) else done
                 rewards_i.append(reward)
                 infos_i.append(info)
-                if arguments.render:
+                if arguments.evalation:
                    env.render()
                 steps += 1
             rewards.append(rewards_i)
