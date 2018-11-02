@@ -16,9 +16,10 @@ import Settings.arguments as arguments
 
 import random
 from torch.distributions import Categorical
+from torch.distributions.one_hot_categorical import OneHotCategorical
 from collections import  namedtuple
 Experience = namedtuple("Experience",
-                        ("states", "actions", "rewards", "advantages", "next_states", "dones"))
+                        ("states", "actions","log_probs", "rewards", "advantages", "next_states", "dones"))
 
 
 class ReplayMemory(object):
@@ -30,20 +31,20 @@ class ReplayMemory(object):
         self.memory = []
         self.position = 0
 
-    def _push_one(self, state, action, reward, advantage, next_state=None, done=None):
+    def _push_one(self, state, action, log_prob, reward, advantage, next_state=None, done=None):
         if len(self.memory) < self.capacity:
             self.memory.append(None)
-        self.memory[self.position] = Experience(state, action, reward, advantage, next_state, done)
+        self.memory[self.position] = Experience(state, action, log_prob, reward, advantage, next_state, done)
         self.position = (self.position + 1) % self.capacity
 
-    def push(self, states, actions, rewards, advantages, next_states=None, dones=None):
+    def push(self, states, actions, log_prob, rewards, advantages, next_states=None, dones=None):
         if isinstance(states, list):
             if next_states is not None and len(next_states) > 0:
-                for s,a,r, ad, n_s,d in zip(states, actions, rewards, advantages, next_states, dones):
-                    self._push_one(s, a, r, ad, n_s, d)
+                for s,a, lp, r, ad, n_s,d in zip(states, actions, log_prob, rewards, advantages, next_states, dones):
+                    self._push_one(s, a, lp, r, ad, n_s, d)
             else:
-                for s,a,r, ad in zip(states, actions, rewards, advantages):
-                    self._push_one(s, a, r, ad)
+                for s,a, lp, r, ad in zip(states, actions ,log_prob, rewards, advantages):
+                    self._push_one(s, a, lp, r, ad)
         else:
             self._push_one(states, actions, rewards, advantages, next_states, dones)
 
@@ -68,13 +69,13 @@ class MAPPO(PPO):
     - adam seems better than rmsprop for ppo
     """
     def __init__(self,n_agent, env, state_dim, action_dim,
-                 memory_capacity=100000, max_steps=None,
+                 memory_capacity=100000, max_steps=None, ppo_epco = 4,
                  roll_out_n_steps=1, target_tau=1.,
-                 target_update_steps=5, clip_param=0.1,
+                 target_update_steps=5, clip_param=0.2,
                  reward_gamma=0.99, reward_scale=1., tau=0.95 ,done_penalty=None,
                  actor_hidden_size=32, critic_hidden_size=32,
                  actor_output_act=nn.functional.log_softmax, critic_loss="mse",
-                 actor_lr=0.01, critic_lr=0.01,
+                 actor_lr=0.0004, critic_lr=0.0004,
                  optimizer_type="adam", entropy_reg=0.01,
                  max_grad_norm=0.5, batch_size=128, episodes_before_train=500,
                  epsilon_start=0.9, epsilon_end=0.01, epsilon_decay=200,
@@ -128,6 +129,7 @@ class MAPPO(PPO):
         self.n_steps = 0
         self.max_steps = max_steps
         self.roll_out_n_steps = roll_out_n_steps
+        self.ppo_epco = ppo_epco
 
         self.viz = None
         self.current_loss_actor = 0
@@ -135,10 +137,10 @@ class MAPPO(PPO):
 
     # predict softmax action based on state
     def _softmax_action(self, agent, state):
-        state_var = to_tensor(state[agent])
-        softmax_action_var = th.exp(self.actors[agent](state_var)).detach()
+        state_var = to_tensor(state[agent]).unsqueeze(0)
+        softmax_action_var = th.exp(self.actors[agent](state_var))
 
-        return softmax_action_var
+        return softmax_action_var.detach()
 
     # choose an action based on state with random noise added for exploration in training
     def exploration_action(self, agent, state):
@@ -163,10 +165,12 @@ class MAPPO(PPO):
     # TODO add entrophy
     def dist_exploration_action(self, agent, state):
         softmax_action = self._softmax_action(agent, state)
-        # assert((softmax_action >= 0).sum().item() == 5)
+        if (softmax_action >= 0).sum().item() < 3:
+            mjb = 1
         m = Categorical(to_tensor(softmax_action))
         action = m.sample()
-        return action
+        log_prob = m.log_prob(action)
+        return action, log_prob
 
 
     def dist_action(self,agent, state):
@@ -211,7 +215,7 @@ class MAPPO(PPO):
                 prev_value = values[t,a]
                 prev_advantage = advantage[t,a]
         returns = values + advantage
-        advantage = (advantage - advantage.mean()) / advantage.std()
+        # advantage = (advantage - advantage.mean()) / advantage.std()
         return returns , advantage
 
     def interact(self):
@@ -219,6 +223,7 @@ class MAPPO(PPO):
             self.env_state = padobs(self.env.reset(), self.obspad_dim)
         states = []
         actions = []
+        log_probs = []
         rewards = []
         values = []
         hidden = []
@@ -227,17 +232,18 @@ class MAPPO(PPO):
         # Todo modify to multi
         for i in range(self.roll_out_n_steps):
             states.append(self.env_state)
-            action = [self.dist_exploration_action(agent, self.env_state)\
-                      for agent in range(self.n_agent)]
+            action, log_prob = zip(*[self.dist_exploration_action(agent, self.env_state)\
+                      for agent in range(self.n_agent)])
             one_hot_action = index_to_one_hot(action, dim=self.action_dim)
             next_state, reward, done, _ = self.env.step(one_hot_action)
             next_state = padobs(next_state, self.obspad_dim)
             actions.append(action)
+            log_probs.append(log_prob)
             if all(done) and self.done_penalty is not None:
                 reward = self.done_penalty
             rewards.append(reward)
             # for advantage
-            value = [self.value(agent, self.env_state, one_hot_action, is_target=True) \
+            value = [self.value(agent, self.env_state, one_hot_action, is_target=True).item() \
                      for agent in range(self.n_agent)]
             values.append(value)
 
@@ -264,78 +270,88 @@ class MAPPO(PPO):
         dis_rewards, advantages = self._discount_reward(rewards, values)
         # print(self.n_steps)
         self.n_steps += 1
-        self.memory.push(states, actions, dis_rewards, advantages)
+        self.memory.push(states, actions, log_probs, dis_rewards, advantages)
 
 
 
     # train on a roll out batch
     def train(self):
-        if self.n_episodes <= self.episodes_before_train:
-            pass
+        for _ in range(self.ppo_epco):
+            if self.n_episodes <= self.episodes_before_train:
+                pass
 
-        batch = self.memory.sample(self.batch_size)
-        # batch x agent x state
-        states_var = to_tensor(batch.states, self.device)
-        # batch x [agent_n * state_dim]
-        whole_states_var = states_var.view(self.batch_size,-1)
-        # batch x agent
-        action_var = arguments.LongTensor(batch.actions)
-        # batch x agent x action_dim
-        one_hot_actions = index_to_one_hot(action_var, self.action_dim)
-        whole_ont_hot_actions = one_hot_actions.view(self.batch_size, -1)
-        # batch x agent
-        returns_var = to_tensor(batch.rewards, self.device)
-        advantages_var = to_tensor(batch.advantages, self.device)
-        # rewards_var = to_tensor(batch.disrewards, self.device).view(-1, 1)
+            batch = self.memory.sample(self.batch_size)
+            # batch x agent x state
+            states_var = to_tensor(batch.states, self.device)
+            # batch x [agent_n * state_dim]
+            whole_states_var = states_var.view(self.batch_size,-1)
+            # batch x agent
+            action_var = arguments.LongTensor(batch.actions)
+            log_probs = to_tensor(batch.log_probs)
 
-        for agent in range(self.n_agent):
+            # batch x agent x action_dim
+            one_hot_actions = index_to_one_hot(action_var, self.action_dim)
+            whole_ont_hot_actions = one_hot_actions.view(self.batch_size, -1)
+            # batch x agent
+            returns_var = to_tensor(batch.rewards, self.device)
+            advantages_var = to_tensor(batch.advantages, self.device)
+            # rewards_var = to_tensor(batch.disrewards, self.device).view(-1, 1)
 
-            # update critic network
-            self.critic_optimizer[agent].zero_grad()
-            target_values = returns_var[:,agent]
-            values = self.value(agent, whole_states_var, whole_ont_hot_actions, is_target=False).squeeze()
-            if self.critic_loss == "huber":
-                critic_loss = nn.functional.smooth_l1_loss(values, target_values)
-            else:
-                critic_loss = nn.MSELoss()(values, target_values)
-            critic_loss.backward()
-            self.current_loss_critic = critic_loss.data
-            if self.max_grad_norm is not None:
-                nn.utils.clip_grad_norm(self.critics[agent].parameters(), self.max_grad_norm)
-            self.critic_optimizer[agent].step()
+            for agent in range(self.n_agent):
 
-            # update actor network
-            self.actor_optimizer[agent].zero_grad()
-            # values = self.critics_target[agent](whole_states_var, whole_ont_hot_actions).squeeze().detach()
-            # advantages = returns_var[:,agent] - values
-            # # normalizing advantages seems not working correctly here
-            # advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-5)
+                # update critic network
+                self.critic_optimizer[agent].zero_grad()
+                target_values = returns_var[:,agent]
+                values = self.value(agent, whole_states_var, whole_ont_hot_actions, is_target=False).squeeze()
+                if self.critic_loss == "huber":
+                    critic_loss = nn.functional.smooth_l1_loss(values, target_values)
+                else:
+                    critic_loss = nn.MSELoss()(values, target_values)
+                critic_loss.backward()
+                self.current_loss_critic = critic_loss.data
+                if self.max_grad_norm is not None:
+                    nn.utils.clip_grad_norm(self.critics[agent].parameters(), self.max_grad_norm)
+                self.critic_optimizer[agent].step()
 
-            # TODO advantage is not correct when using Qnet, so there use Qnet to replace advantage
-            advantages = advantages_var[:,agent]
-            # advantages = target_values.detach()
-            advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-5)
-            log_probs = self.actors[agent](states_var[:,agent,:])
-            action_log_probs = th.gather(log_probs,dim=1, index=action_var[:,agent].unsqueeze(1))
-            dist_entropy = logpro2entropy(log_probs)
-            old_action_log_probs = th.gather(self.actors_target[agent](states_var[:,agent,:]).detach(),
-                                             dim=1, index=action_var[:,agent].unsqueeze(1))
-            ratio = th.exp(action_log_probs - old_action_log_probs).squeeze()
-            surr1 = ratio * advantages
-            surr2 = th.clamp(ratio, 1.0 - self.clip_param, 1.0 + self.clip_param) * advantages
-            # PPO's pessimistic surrogate (L^CLIP)
-            actor_loss = -th.mean(th.min(surr1, surr2)) - dist_entropy * self.entropy_reg
-            # actor_loss = -th.mean(th.min(surr1, surr2))
-            actor_loss.backward()
-            self.current_loss_actor = actor_loss.data
-            if self.max_grad_norm is not None:
-                nn.utils.clip_grad_norm(self.actors[agent].parameters(), self.max_grad_norm)
-            self.actor_optimizer[agent].step()
+                # update actor network
+                self.actor_optimizer[agent].zero_grad()
+                # values = self.critics_target[agent](whole_states_var, whole_ont_hot_actions).squeeze().detach()
+                # advantages = returns_var[:,agent] - values
+                # # normalizing advantages seems not working correctly here
+                # advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-5)
 
-            # update actor target network and critic target network
-            if self.n_steps % self.target_update_steps == 0 and self.n_steps > 0:
-                soft_update(self.actors_target[agent], self.actors[agent], self.target_tau)
-                soft_update(self.critics_target[agent], self.critics[agent], self.target_tau)
+                # TODO advantage is not correct when using Qnet, so there use Qnet to replace advantage
+                advantages = advantages_var[:,agent]
+                # log_probs = self.actors[agent](states_var[:,agent,:])
+                # action_log_probs = th.gather(log_probs,dim=1, index=action_var[:,agent].unsqueeze(1))
+                # dist_entropy = logpro2entropy(log_probs)
+                # old_action_log_probs = th.gather(self.actors_target[agent](states_var[:,agent,:]).detach(),
+                #                                  dim=1, index=action_var[:,agent].unsqueeze(1))
+
+                action_probs = th.exp(self.actors[agent](states_var[:, agent, :]))
+                m = Categorical(action_probs)
+                action_log_probs = m.log_prob(action_var[:, agent])
+                dist_entropy = m.entropy()
+                old_action_log_probs = log_probs[:, agent]
+                ratio = th.exp(action_log_probs - old_action_log_probs).squeeze()
+                surr1 = ratio * advantages
+                surr2 = th.clamp(ratio, 1.0 - self.clip_param, 1.0 + self.clip_param) * advantages
+                # PPO's pessimistic surrogate (L^CLIP)
+                actor_loss = -th.mean(th.min(surr1, surr2)) - dist_entropy.mean() * self.entropy_reg
+                # actor_loss = -th.mean(th.min(surr1, surr2))
+                actor_loss.backward()
+                self.current_loss_actor = actor_loss.data
+                if self.max_grad_norm is not None:
+                    nn.utils.clip_grad_norm(self.actors[agent].parameters(), self.max_grad_norm)
+                self.actor_optimizer[agent].step()
+
+                # update actor target network and critic target network
+                if self.n_steps % self.target_update_steps == 0:
+                    # print('Update target network')
+                    # soft_update(self.actors_target[agent], self.actors[agent], self.target_tau)
+                    soft_update(self.critics_target[agent], self.critics[agent], self.target_tau)
+
+
 
     # evaluation the learned agent
     # @return rewards: list(eval_episodes,eval_steps,agent)

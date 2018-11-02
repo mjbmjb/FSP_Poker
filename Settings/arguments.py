@@ -18,7 +18,7 @@ import os
 WORK_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), '..')) + '/'
 # whether to run on GPU
 # gpu = torch.cuda.is_available()
-gpu = False
+gpu = True
 device = torch.device("cuda:0" if gpu else "cpu")
 #
 num_process = 15
@@ -33,9 +33,9 @@ rl_model = 'dqn'
 sl_model = 'mlr'
 
 # culcate by how many step per episoid
-rl_update = 20
-sl_update = 40
-
+rl_update = 200
+sl_update = 400
+batch_size = 128
 # params for rl
 gamma = 0.99
 
@@ -76,7 +76,7 @@ loss = nn.MSELoss()
 dqn_init_policy = Tensor([0.1,0.2,0.2,0.3,0.2])
 reservoir = True
 # how often to save the model during training
-save_epoch = 100
+save_epoch = 300
 # how many epochs to train for
 epoch_count = 200000
 # how many solved poker situations are generated for use as training examples
@@ -92,8 +92,8 @@ eta = 0.5
 sl_update_num = 128
 
 evalation = False
-load_model = False
-load_model_num = 2000
+load_model = True
+load_model_num = 26000
 muilt_gpu = False
 
 bet_bucket = 5

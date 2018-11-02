@@ -106,7 +106,7 @@ Transition = namedtuple('Transition',
 
 def weights_init(m):
     if isinstance(m, nn.Linear):
-        normal_(m.weight.data, mean=0.3, std=0.1)
+        normal_(m.weight.data, mean=0.0, std=0.1)
         normal_(m.bias.data, mean=0, std=0.1)
 
 #def reservoir_sample(data, K):
@@ -272,9 +272,9 @@ class DQNOptim:
     #    episode.
     #
     
-    def __init__(self, lr=1e-4):
+    def __init__(self, lr=1e-4, batch_size = arguments.batch_size):
         
-        self.BATCH_SIZE = 128
+        self.BATCH_SIZE = batch_size
         self.GAMMA = 1.0
         self.EPS_START = 0.9
         self.EPS_END = 0.05

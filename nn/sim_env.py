@@ -232,7 +232,8 @@ class SimEnv:
         board_tensor = self._cards_to_tensor(state.board)
       
         #transform hand strengen
-        # street: 1-2 position 3 bets 4-5 private 
+        # street: 1-2 position 3 bets 4-5 private
+        # 2 | 2 | 2 | 10 | 8 | 52 | 6 | 6
         return_tensor = torch.unsqueeze(torch.cat((street_tensor, position_tensor, active_tensor,
                                          bet_tensor, pot_tensor, betting_his, private_tensor, board_tensor,) , 0), 0)
         return return_tensor

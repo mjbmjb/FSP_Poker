@@ -19,9 +19,7 @@ def kl_log_probs(log_p1, log_p2):
 
 
 def index_to_one_hot(index, dim):
-    eye = th.eye(dim)
-    if arguments.gpu:
-        eye = eye.cuda()
+    eye = th.eye(dim).to(arguments.device)
     one_hot = [eye[i.squeeze()] for i in index] if isinstance(index, list) or isinstance(index , tuple) \
                else eye[index]
     return one_hot

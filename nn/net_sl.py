@@ -60,13 +60,13 @@ def reservoir_sample(memory, K):
 class SLNet(nn.Module):
     def __init__(self, dim=arguments.dim_obs):
         super(SLNet, self).__init__()
-        self.fc1 = nn.Linear(dim,1024)
-        self.fc1_bn = nn.BatchNorm1d(1024)
+        self.fc1 = nn.Linear(dim,512)
+        self.fc1_bn = nn.BatchNorm1d(512)
         # self.fc2 = nn.Linear(64,64)
         # self.fc2_bn = nn.BatchNorm1d(64)
-        self.fc3 = nn.Linear(1024,1024)
-        self.fc3_bn = nn.BatchNorm1d(1024)
-        self.output = nn.Linear(1024,5)
+        self.fc3 = nn.Linear(512,512)
+        self.fc3_bn = nn.BatchNorm1d(512)
+        self.output = nn.Linear(512,5)
         self.logsoftmax = nn.functional.log_softmax
         
     def forward(self, x):
@@ -87,14 +87,13 @@ class SLNet(nn.Module):
 
     def forward_fc(self, x):
         x = self.fc1(x)
-        x = F.dropout(x, p=0.2)
-        x = F.relu(self.fc1_bn(x))
+        # x = F.relu(self.fc1_bn(x))
+
         # x = self.fc2(x)
         # x = F.dropout(x, p=0.2)
         # x = F.relu(self.fc2_bn(x))
-        x = self.fc3(x)
-        x = F.dropout(x, p=0.2)
-        x = F.relu(self.fc3_bn(x))
+        # x = self.fc3(x)
+        # x = F.relu(self.fc3_bn(x))
         return x
 
 
@@ -148,9 +147,9 @@ class SLOptim:
     #    episode.
     #
     
-    def __init__(self,state_dim=arguments.dim_obs):
+    def __init__(self,state_dim=arguments.dim_obs, batch_size = arguments.batch_size):
         
-        self.BATCH_SIZE = 256
+        self.BATCH_SIZE = batch_size
         
         self.model = SLNet(dim=state_dim)
         
@@ -162,13 +161,12 @@ class SLOptim:
             
         if arguments.muilt_gpu:
             self.model = nn.DataParallel(self.model)
-            
-        
-            
+
         # self.optimizer = optim.Adam(self.model.parameters(),lr=0.00001,weight_decay=0.0005)
         self.optimizer = optim.Adam(self.model.parameters(), lr=1e-4, weight_decay=0.0001)
         self.memory = Memory(50000)
         self.loss = nn.NLLLoss()
+        self.max_grad_norm = 0.5
         
         
         self.steps_done = 0
@@ -262,8 +260,8 @@ class SLOptim:
         # Optimize the model
         self.optimizer.zero_grad()
         output.backward()
-        for param in self.model.parameters():
-            param.grad.data.clamp_(-1, 1)
+        if self.max_grad_norm is not None:
+            nn.utils.clip_grad_norm(self.model.parameters(), self.max_grad_norm)
         self.optimizer.step()
 
     def test(self, batch_size=100):

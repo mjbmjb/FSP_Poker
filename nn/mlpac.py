@@ -19,7 +19,7 @@ class Actor(nn.Module):
         out = nn.functional.relu(self.fc1(state))
         out = nn.functional.relu(self.fc2(out))
         out = self.fc3(out)
-        out = self.output_act(out, dim=0)
+        out = self.output_act(out, dim=1)
         return out
 
 class Critic(nn.Module):
