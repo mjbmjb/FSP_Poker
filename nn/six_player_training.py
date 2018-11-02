@@ -10,7 +10,7 @@ import sys
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 # sys.path.append('/home/carc/mjb/deepStack/')
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 
 # import cProfilev
 
@@ -47,6 +47,13 @@ from collections import namedtuple
 import datetime
 import matplotlib.pyplot as plt
 from common.utils import agg_double_list
+
+# get evaluation args
+# args = arguments.get_args()
+# arguments.evalation = args.evaluation
+# arguments.load_model = args.evaluation
+# arguments.load_model_num = args.model_num
+
 
 num_episodes = 10
 env = SimEnv(True)
@@ -603,8 +610,8 @@ def gym_ppo_train():
 
     
     # env_id = 'simple'
-    env_id = 'simple_tag'
-    # env_id = 'simple_spread'
+    # env_id = 'simple_tag'
+    env_id = 'simple_spread'
     # env_id = 'simple_speaker_listener'
     env = make_env(env_id)
     env.seed(1234)
@@ -627,18 +634,18 @@ def gym_ppo_train():
     # roll out n steps
     ROLL_OUT_N_STEPS = 100
     # PPO epco
-    PPO_EPCO = 2
+    PPO_EPCO = 4
     # only remember the latest ROLL_OUT_N_STEPS
     MEMORY_CAPACITY = ROLL_OUT_N_STEPS
     # MEMORY_CAPACITY = 50000
     # only use the latest ROLL_OUT_N_STEPS for training PPO
-    BATCH_SIZE = int(ROLL_OUT_N_STEPS / 4)
+    BATCH_SIZE = int(ROLL_OUT_N_STEPS / 2)
 
     TARGET_UPDATE_STEPS = 10
     TARGET_TAU = 0.99
 
-    REWARD_DISCOUNTED_GAMMA = 0.0
-    TAU = 0.5
+    REWARD_DISCOUNTED_GAMMA = 0.9
+    TAU = 0.8
     ENTROPY_REG = 0.01
     #
     DONE_PENALTY = None

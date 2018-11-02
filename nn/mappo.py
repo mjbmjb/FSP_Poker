@@ -169,7 +169,7 @@ class MAPPO(PPO):
             mjb = 1
         m = Categorical(to_tensor(softmax_action))
         action = m.sample()
-        log_prob = m.log_prob(action)
+        log_prob = m.probs.log()[:,action]
         return action, log_prob
 
 
@@ -287,7 +287,7 @@ class MAPPO(PPO):
             whole_states_var = states_var.view(self.batch_size,-1)
             # batch x agent
             action_var = arguments.LongTensor(batch.actions)
-            log_probs = to_tensor(batch.log_probs)
+            log_probs_var = to_tensor(batch.log_probs)
 
             # batch x agent x action_dim
             one_hot_actions = index_to_one_hot(action_var, self.action_dim)
@@ -313,31 +313,34 @@ class MAPPO(PPO):
                     nn.utils.clip_grad_norm(self.critics[agent].parameters(), self.max_grad_norm)
                 self.critic_optimizer[agent].step()
 
-                # update actor network
-                self.actor_optimizer[agent].zero_grad()
+
                 # values = self.critics_target[agent](whole_states_var, whole_ont_hot_actions).squeeze().detach()
                 # advantages = returns_var[:,agent] - values
                 # # normalizing advantages seems not working correctly here
                 # advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-5)
 
                 # TODO advantage is not correct when using Qnet, so there use Qnet to replace advantage
+                # update actor network
+                self.actor_optimizer[agent].zero_grad()
                 advantages = advantages_var[:,agent]
-                # log_probs = self.actors[agent](states_var[:,agent,:])
-                # action_log_probs = th.gather(log_probs,dim=1, index=action_var[:,agent].unsqueeze(1))
-                # dist_entropy = logpro2entropy(log_probs)
+                log_probs = self.actors[agent](states_var[:,agent,:])
+                action_log_probs = th.gather(log_probs,dim=1, index=action_var[:,agent].unsqueeze(1)).squeeze()
+                dist_entropy = logpro2entropy(log_probs)
                 # old_action_log_probs = th.gather(self.actors_target[agent](states_var[:,agent,:]).detach(),
                 #                                  dim=1, index=action_var[:,agent].unsqueeze(1))
 
-                action_probs = th.exp(self.actors[agent](states_var[:, agent, :]))
-                m = Categorical(action_probs)
-                action_log_probs = m.log_prob(action_var[:, agent])
-                dist_entropy = m.entropy()
-                old_action_log_probs = log_probs[:, agent]
+                # # using Catrgorical to produce log_prob seems not working
+                # action_probs = th.exp(self.actors[agent](states_var[:, agent, :]))
+                # m = Categorical(action_probs)
+                # action_log_probs = m.log_prob(action_var[:, agent])
+                # dist_entropy = m.entropy()
+
+                old_action_log_probs = log_probs_var[:, agent]
                 ratio = th.exp(action_log_probs - old_action_log_probs).squeeze()
                 surr1 = ratio * advantages
                 surr2 = th.clamp(ratio, 1.0 - self.clip_param, 1.0 + self.clip_param) * advantages
                 # PPO's pessimistic surrogate (L^CLIP)
-                actor_loss = -th.mean(th.min(surr1, surr2)) - dist_entropy.mean() * self.entropy_reg
+                actor_loss = -th.mean(th.min(surr1, surr2)) - dist_entropy * self.entropy_reg
                 # actor_loss = -th.mean(th.min(surr1, surr2))
                 actor_loss.backward()
                 self.current_loss_actor = actor_loss.data

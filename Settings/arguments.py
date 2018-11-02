@@ -91,9 +91,9 @@ eta = 0.5
 # table update number
 sl_update_num = 128
 
-evalation = False
+evalation = True
 load_model = True
-load_model_num = 26000
+load_model_num = 300
 muilt_gpu = False
 
 bet_bucket = 5
@@ -107,3 +107,13 @@ if gpu:
   ByteTensor = torch.cuda.ByteTensor
   IntTensor = torch.cuda.LongTensor
 
+import argparse
+def get_args():
+  parser = argparse.ArgumentParser(description='RL')
+  parser.add_argument('--evaluation', type=bool, default=False,
+                        help='is evaluation (default: False)')
+  parser.add_argument('--model_num', type=int, default=200,
+                        help='model_num (default: 200)')
+
+  args = parser.parse_args()
+  return args
