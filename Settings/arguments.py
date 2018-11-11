@@ -33,15 +33,15 @@ rl_model = 'dqn'
 sl_model = 'mlr'
 
 # culcate by how many step per episoid
-rl_update = 200
-sl_update = 400
+rl_update = 100
+sl_update = 100
 batch_size = 128
 # params for rl
 gamma = 0.99
 
-dim_obs = 88
+dim_obs = 133
 # params for sl
-sl_start = 500
+sl_start = 50
 
 # @field bet_sizing
 bet_sizing = [1]
@@ -73,7 +73,7 @@ cfr_skip_iters = 500
 net = '{nn.Linear(input_size, 50), nn.PReLU(), nn.Linear(50, output_size)}'
 loss_F = F.nll_loss
 loss = nn.MSELoss()
-dqn_init_policy = Tensor([0.1,0.2,0.2,0.3,0.2])
+dqn_init_policy = Tensor([0.25,0.25,0.25,0.25])
 reservoir = True
 # how often to save the model during training
 save_epoch = 300
@@ -93,12 +93,14 @@ sl_update_num = 128
 
 evalation = True
 load_model = True
-load_model_num = 300
+load_model_num = 1250
 muilt_gpu = False
+display = True
 
 bet_bucket = 5
 bet_bucket_len = int(stack / bet_bucket)
 
+C_PLAYER = True
 
 assert(cfr_iters > cfr_skip_iters)
 if gpu:

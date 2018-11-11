@@ -230,12 +230,12 @@ def single_train():
             if flag == 0:
                 # sl
                 #                action = Agents[current_player].sl.select_action(state_tensor)
-                action = Agents[0].sl.select_action(state_tensor)[0]
+                action = Agent.sl.select_action(state_tensor)[0]
             #                print("SL Action:"+str(action[0][0]))
             elif flag == 1:
                 # rl
                 #                action = Agents[current_player].rl.select_action(state_tensor)
-                action = Agents[0].rl.select_action(state_tensor, state.current_player)[0]
+                action = Agent.rl.select_action(state_tensor, state.current_player)[0]
             #                print("RL Action:"+str(action[0][0]))
             else:
                 assert (False)
@@ -257,14 +257,15 @@ def single_train():
                 if arguments.rl_model == 'dqn':
                     store_memory(env, Agent)
                     #                for agent in Agents:
-                    if (Agents[0].rl.steps_done - 1) % 200 == 0:  # remember that at first the two net shall be the same
-                        Agents[0].rl.target_net.load_state_dict(Agents[0].rl.model.state_dict())
-                        Agents[0].rl.steps_done += 1  # track always assign problem
-                    if len(Agents[0].rl.memory.memory) >= Agents[
+                    if (Agent.rl.steps_done - 1) % 10 == 0:  # remember that at first the two net shall be the same
+                        print('RL Steps Done: %d update target network' % Agent.rl.steps_done)
+                        Agent.rl.target_net.load_state_dict(Agent.rl.model.state_dict())
+                        Agent.rl.steps_done += 1  # track always assign problem
+                    if len(Agent.rl.memory.memory) >= Agents[
                         0].rl.memory.capacity / 10 and i_episode % arguments.rl_update == 0:
-                        Agents[0].rl.optimize_model()
+                        Agent.rl.optimize_model()
                 elif arguments.rl_model == 'reinforce':
-                    Agents[0].rl.finish_episode(env.memory)
+                    Agent.rl.finish_episode(env.memory)
                 else:
                     raise (NotImplementedError)
 
@@ -279,7 +280,7 @@ def single_train():
                     print_dead(Agent.sl.model)
                     # print('episod: %d' % (i_episode))
                     print('episod: %d rl: %d,sl: %d' % (i_episode, \
-                                                        len(Agents[0].rl.memory), \
+                                                        len(Agent.rl.memory), \
                                                         len(Agent.sl.memory)))
                     # record the award
                 #                    record_reward(Agents, env, Reward)
@@ -316,7 +317,9 @@ def mul_train():
     import time
     time_start = time.time()
     table_update_num = 0
-    maddpg = MADDPG()
+    episodes_before_train = 1000
+
+    maddpg = MADDPG(dim_obs=133,dim_act=game_settings.actions_count, episodes_before_train=episodes_before_train)
     sl = SLOptim(state_dim=133)
 
     if arguments.load_model:
@@ -375,7 +378,7 @@ def gym_maddpg_train():
     table_update_num = 0
     # simple | simple_adversary | simple_crypto | simple_push | simple_reference |
     # simple_speaker_listener | simple_spread | simple_tag | simple_world_comm
-    env_id = 'simple_spread'
+    env_id = 'simple_world_comm'
     env = make_env(env_id)
     n_agent = env.n
     obs_dim = np.array([shape.shape[0] for shape in env.observation_space])
@@ -398,9 +401,9 @@ def gym_maddpg_train():
     aver = np.zeros((n_agent,))
 
     if arguments.load_model:
-        maddpg.load("../Data/Model/(maddpg)Iter:" + str(arguments.load_model_num))
+        maddpg.load("../Data/Model/maddpg_Iter:" + str(arguments.load_model_num))
         for i in range(n_agent):
-            sl[i].model.load_state_dict(torch.load("../Data/Model/(maddpg)Iter:" +
+            sl[i].model.load_state_dict(torch.load("../Data/Model/maddpg_Iter:" +
                        str(arguments.load_model_num) + '_' + str(i) + '_' + '.sl'))
         # TODO remember to remove it when train
         # maddpg.steps_done = arguments.load_model_num
@@ -493,9 +496,9 @@ def gym_maddpg_train():
             maddpg.plot_error_vis(i_episode)
         # record_reward(Agents, env, Reward)
         if i_episode != 0 and i_episode % arguments.save_epoch == 0:
-            maddpg.save("../Data/Model/(maddpg)Iter:" + str(i_episode))
+            maddpg.save("../Data/Model/maddpg_Iter:" + str(i_episode))
             for i in range(n_agent):
-                torch.save(sl[i].model.state_dict(), "../Data/Model/(maddpg)Iter:" +
+                torch.save(sl[i].model.state_dict(), "../Data/Model/maddpg_Iter:" +
                        str(i_episode) + '_' + str(i) + '_' + '.sl')
         maddpg.episode_done += 1
 
@@ -607,21 +610,29 @@ def gym_acer_train():
         p.join()
 
 def gym_ppo_train():
-
-    
-    # env_id = 'simple'
+    # simple | simple_adversary | simple_crypto | simple_push | simple_reference |
+    # simple_speaker_listener | simple_spread | simple_tag | simple_world_comm
+    # env_id = 'simple_world_comm'
     # env_id = 'simple_tag'
-    env_id = 'simple_spread'
     # env_id = 'simple_speaker_listener'
+    env_id = 'simple_spread'
+
+
     env = make_env(env_id)
     env.seed(1234)
     env_eval = make_env(env_id)
     env_eval.seed(4321)
+
+    # For Pad (all the network has same input)
     state_dim = max([item.shape[0] for item in env.observation_space])
-    action_dim = max([item.n for item in env.action_space])
-    # for pad
+    action_dim = max([item.n if hasattr(item,'n') else item.num_discrete_space \
+                      for item in env.action_space])
     obs_dim = np.array([shape.shape[0] for shape in env.observation_space])
     obspad_dim = obs_dim.max() - obs_dim
+
+    # state_dim = max([item.shape[0] for item in env.observation_space])
+    # action_dim = max([item.n if hasattr(item,'n') else item.num_discrete_space \
+    #                   for item in env.action_space])
 
     n_agent = env.n
 
@@ -630,6 +641,8 @@ def gym_ppo_train():
     EPISODES_BEFORE_TRAIN = 10
     EVAL_EPISODES = 5
     EVAL_INTERVAL = 50
+    # is stochastic policy
+    IS_DIST = True
 
     # roll out n steps
     ROLL_OUT_N_STEPS = 100
@@ -639,12 +652,12 @@ def gym_ppo_train():
     MEMORY_CAPACITY = ROLL_OUT_N_STEPS
     # MEMORY_CAPACITY = 50000
     # only use the latest ROLL_OUT_N_STEPS for training PPO
-    BATCH_SIZE = int(ROLL_OUT_N_STEPS / 2)
+    BATCH_SIZE = ROLL_OUT_N_STEPS
 
     TARGET_UPDATE_STEPS = 10
     TARGET_TAU = 0.99
 
-    REWARD_DISCOUNTED_GAMMA = 0.9
+    REWARD_DISCOUNTED_GAMMA = 0.00
     TAU = 0.8
     ENTROPY_REG = 0.01
     #
@@ -656,7 +669,7 @@ def gym_ppo_train():
 
     EPSILON_START = 0.50
     EPSILON_END = 0.05
-    EPSILON_DECAY = 3000
+    EPSILON_DECAY = 2000
 
     mappo = MAPPO(n_agent=n_agent, env=env, memory_capacity=MEMORY_CAPACITY,
               state_dim=state_dim, action_dim=action_dim,
@@ -669,25 +682,31 @@ def gym_ppo_train():
               epsilon_decay=EPSILON_DECAY, max_grad_norm=MAX_GRAD_NORM,
               episodes_before_train=EPISODES_BEFORE_TRAIN,
               critic_loss=CRITIC_LOSS,
-              use_cuda=arguments.gpu, obspad_dim=obspad_dim)
+              use_cuda=arguments.gpu, obspad_dim=obspad_dim, is_dist=IS_DIST)
 
     if arguments.load_model:
-        mappo.load("../Data/Model/(mappo)Iter:%d" % (arguments.load_model_num))
+        if not arguments.display:
+            path = "../Data/Model/mappo_%s_Iter:%d" % (env_id, arguments.load_model_num)
+        else:
+            path = "../Data/stored_Model/%s/mappo_Iter" % (env_id)
+
+        mappo.load(path)
         mappo.n_episodes = arguments.load_model_num
+
+        if arguments.evalation:
+            rewards, _ = mappo.evaluation(env_eval, 100, EVAL_EPISODES)
+            return
 
     episodes = []
     eval_rewards = []
     while mappo.n_episodes < MAX_EPISODES:
         mappo.interact()
-        if arguments.evalation:
-            rewards, _ = mappo.evaluation(env_eval, 100, EVAL_EPISODES)
-            continue
         # print("Episode %d" % ppo.n_episodes )
         if mappo.n_episodes >= EPISODES_BEFORE_TRAIN:
             mappo.train()
         if mappo.episode_done and ((mappo.n_episodes + 1) % EVAL_INTERVAL == 0)\
                               and mappo.n_episodes >= EPISODES_BEFORE_TRAIN:
-            mappo.save("../Data/Model/(mappo)Iter:" + str(mappo.n_episodes+1))
+            mappo.save("../Data/Model/mappo_%s_Iter:%d"  % (env_id, mappo.n_episodes+1))
             rewards, _ = mappo.evaluation(env_eval, 100, EVAL_EPISODES)
             rewards_mu, rewards_std = agg_double_list(rewards)
             print("Episode %d, Average Reward %s" % (mappo.n_episodes + 1, str(rewards_mu)))
@@ -719,3 +738,4 @@ if __name__ == "__main__":
     gym_ppo_train()
     # gym_maddpg_train()
     # single_train()
+    # mul_train()

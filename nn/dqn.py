@@ -320,8 +320,8 @@ class DQNOptim:
         eps_threshold = 0.06 / np.sqrt(self.steps_done)
 #        self.steps_done += 1
         if sample > eps_threshold:
-            action = self.model(
-                Variable(state)).data.max(1)[1].view((1, 1))
+            action = self.model(state).data.max(1)[1].view((1, 1))
+            # print(self.model(state))
             action = arguments.LongTensor(action)
 
         else:

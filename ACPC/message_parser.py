@@ -22,18 +22,18 @@ class MessageParser(object):
         self.board_string = "".join(card_string[1:])
         # handle hole
         self.hole = self.parse_hole()
-        self.hole_card = arguments.IntTensor(game_settings.player_count,2).fill_(-1)
+        self.hole_card = arguments.IntTensor(game_settings.player_count,game_settings.private_count).fill_(-1)
         for i in range(game_settings.player_count):
             if self.hole[i] != []:
                 for j in range (len(self.hole[i])):
-                    self.hole_card[i][j] = CardTool.string_2_card(self.hole[i][j])
+                    self.hole_card[i][j] = CardTool.string_to_card(self.hole[i][j])
             
         
         # handle board
         self.board = self.parse_board()
         self.board_card = arguments.IntTensor(game_settings.board_card_count).fill_(-1)
         for i in range(len(self.board)):
-            self.board_card[i] = CardTool.string_2_card(self.board[i])
+            self.board_card[i] = CardTool.string_to_card(self.board[i])
 
     def parse_hole(self):
         card_list = self.hole_string.split("|")

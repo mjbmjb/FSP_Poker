@@ -11,7 +11,7 @@ from copy import deepcopy
 from nn.mlpac import Actor, MCritic
 from nn.ppo import PPO
 from common.utils import to_tensor, index_to_one_hot, logpro2entropy, padobs
-from nn.misc import soft_update
+from nn.misc import soft_update, gumbel_softmax
 import Settings.arguments as arguments
 
 import random
@@ -71,15 +71,15 @@ class MAPPO(PPO):
     def __init__(self,n_agent, env, state_dim, action_dim,
                  memory_capacity=100000, max_steps=None, ppo_epco = 4,
                  roll_out_n_steps=1, target_tau=1.,
-                 target_update_steps=5, clip_param=0.2,
+                 target_update_steps=5, clip_param=0.20,
                  reward_gamma=0.99, reward_scale=1., tau=0.95 ,done_penalty=None,
                  actor_hidden_size=32, critic_hidden_size=32,
                  actor_output_act=nn.functional.log_softmax, critic_loss="mse",
                  actor_lr=0.0004, critic_lr=0.0004,
-                 optimizer_type="adam", entropy_reg=0.01,
+                 optimizer_type="adam", entropy_reg=0.05,
                  max_grad_norm=0.5, batch_size=128, episodes_before_train=500,
                  epsilon_start=0.9, epsilon_end=0.01, epsilon_decay=200,
-                 use_cuda=True, obspad_dim=None, device = arguments.device):
+                 use_cuda=True, obspad_dim=None, is_dist = True, device = arguments.device):
 
         super(MAPPO, self).__init__(env, state_dim, action_dim,
                  memory_capacity, max_steps,
@@ -130,52 +130,65 @@ class MAPPO(PPO):
         self.max_steps = max_steps
         self.roll_out_n_steps = roll_out_n_steps
         self.ppo_epco = ppo_epco
+        self.is_dist = is_dist
 
         self.viz = None
         self.current_loss_actor = 0
         self.current_loss_critic = 0
 
     # predict softmax action based on state
-    def _softmax_action(self, agent, state):
+    def _logsoftmax_action(self, agent, state):
         state_var = to_tensor(state[agent]).unsqueeze(0)
-        softmax_action_var = th.exp(self.actors[agent](state_var))
+        log_policy = self.actors[agent](state_var)
+        # print(log_policy)
+        # softmax_action_var = th.exp(log_policy)
 
-        return softmax_action_var.detach()
+        return log_policy.detach()
 
     # choose an action based on state with random noise added for exploration in training
     def exploration_action(self, agent, state):
-        softmax_action = self._softmax_action(agent, state)
+        softmax_action = self._logsoftmax_action(agent, state)
         epsilon = self.epsilon_end + (self.epsilon_start - self.epsilon_end) * \
                                   np.exp(-1. * self.n_steps / self.epsilon_decay)
         if np.random.rand() < epsilon:
             action = np.random.choice(self.action_dim)
         else:
             action = np.argmax(softmax_action)
-        return action
+        action_var = th.LongTensor([action], device=self.device)
+        log_prob = softmax_action.log()[:,action_var]
+        return action_var, log_prob
 
     # choose an action based on state for execution
     def action(self, agent, state):
         softmax_action = self._softmax_action(agent, state)
         action = np.argmax(softmax_action)
-        return action
-
-    def log_action(self, agent ):
-        pass
+        action_var = th.LongTensor([action], device=self.device)
+        return action_var
 
     # TODO add entrophy
     def dist_exploration_action(self, agent, state):
-        softmax_action = self._softmax_action(agent, state)
-        if (softmax_action >= 0).sum().item() < 3:
-            mjb = 1
-        m = Categorical(to_tensor(softmax_action))
-        action = m.sample()
-        log_prob = m.probs.log()[:,action]
+        logsoftmax_action = self._logsoftmax_action(agent, state)
+        if (logsoftmax_action >= 0).sum().item() < 3:
+            self._logsoftmax_action(agent, state)
+        m = Categorical(logits = logsoftmax_action)
+
+        epsilon = self.epsilon_end + (self.epsilon_start - self.epsilon_end) * \
+                  np.exp(-1. * self.n_steps / self.epsilon_decay)
+        # epsilon = 2
+        if np.random.rand() < epsilon:
+            action = m.sample()
+        else:
+            action = th.LongTensor([np.random.choice(self.action_dim)],
+                                    device = arguments.device)
+        log_prob = m.logits[:,action]
+        # if log_prob.item()  == float('inf') or  log_prob.item()  == float('-inf'):
+        #     mjb = 1
         return action, log_prob
 
 
     def dist_action(self,agent, state):
-        softmax_action = self._softmax_action(agent, state)
-        m = Categorical(to_tensor(softmax_action))
+        logsoftmax_action = self._logsoftmax_action(agent, state)
+        m = Categorical(logits = logsoftmax_action)
         action = m.sample()
         return action
 
@@ -201,11 +214,11 @@ class MAPPO(PPO):
         return value_var
 
     # discount roll out rewards
-    def _discount_reward(self, rewards, values):
+    def _discount_reward(self, rewards, values, final_value):
         advantage, deltas = np.zeros_like(rewards), np.zeros_like(rewards)
         rewards, values = np.array(rewards), np.array(values)
         for a in range(self.n_agent):
-            prev_value = values[-1,a]
+            prev_value = final_value[a]
             # TODO determine the value of pre_advantage
             prev_advantage = 0
             for t in reversed(range(0, len(rewards))):
@@ -215,7 +228,7 @@ class MAPPO(PPO):
                 prev_value = values[t,a]
                 prev_advantage = advantage[t,a]
         returns = values + advantage
-        # advantage = (advantage - advantage.mean()) / advantage.std()
+        advantage = (advantage - advantage.mean()) / advantage.std()
         return returns , advantage
 
     def interact(self):
@@ -231,9 +244,15 @@ class MAPPO(PPO):
         # take n steps
         # Todo modify to multi
         for i in range(self.roll_out_n_steps):
+
             states.append(self.env_state)
-            action, log_prob = zip(*[self.dist_exploration_action(agent, self.env_state)\
+            if self.is_dist:
+                action, log_prob = zip(*[self.dist_exploration_action(agent, self.env_state)\
                       for agent in range(self.n_agent)])
+            else:
+                action, log_prob = zip(*[self.exploration_action(agent, self.env_state) \
+                                         for agent in range(self.n_agent)])
+
             one_hot_action = index_to_one_hot(action, dim=self.action_dim)
             next_state, reward, done, _ = self.env.step(one_hot_action)
             next_state = padobs(next_state, self.obspad_dim)
@@ -263,11 +282,18 @@ class MAPPO(PPO):
             self.episode_done = True
             # FIXME episodes
             self.n_episodes += 1
-            # final_action = [self.action(agent, final_state) for agent in range(self.n_agent)]
-            # final_value = [self.value(agent,final_state,final_action) for agent in range(self.n_agent)]
+            if self.is_dist:
+                final_action, _ = zip(*[self.dist_exploration_action(agent, final_state)\
+                      for agent in range(self.n_agent)])
+            else:
+                final_action, _ = zip(*[self.exploration_action(agent, final_state)\
+                      for agent in range(self.n_agent)])
+            one_hot_final_action = index_to_one_hot(final_action, dim=self.action_dim)
+            final_value = [self.value(agent, final_state, one_hot_final_action ,is_target=True).item()\
+                           for agent in range(self.n_agent)]
             # 这里final_value是用来做TD(K)的最后一项
         # TODO 是否需要去掉discount
-        dis_rewards, advantages = self._discount_reward(rewards, values)
+        dis_rewards, advantages = self._discount_reward(rewards, values, final_value)
         # print(self.n_steps)
         self.n_steps += 1
         self.memory.push(states, actions, log_probs, dis_rewards, advantages)
@@ -298,6 +324,7 @@ class MAPPO(PPO):
             # rewards_var = to_tensor(batch.disrewards, self.device).view(-1, 1)
 
             for agent in range(self.n_agent):
+                # print(self.actors[agent].fc1.weight)
 
                 # update critic network
                 self.critic_optimizer[agent].zero_grad()
@@ -342,12 +369,17 @@ class MAPPO(PPO):
                 # PPO's pessimistic surrogate (L^CLIP)
                 actor_loss = -th.mean(th.min(surr1, surr2)) - dist_entropy * self.entropy_reg
                 # actor_loss = -th.mean(th.min(surr1, surr2))
+                if actor_loss.data == float("inf") or actor_loss.data == float("-inf"):
+                    print(actor_loss.data)
                 actor_loss.backward()
                 self.current_loss_actor = actor_loss.data
+
                 if self.max_grad_norm is not None:
                     nn.utils.clip_grad_norm(self.actors[agent].parameters(), self.max_grad_norm)
                 self.actor_optimizer[agent].step()
 
+                if agent == 3:
+                    mjb = 1
                 # update actor target network and critic target network
                 if self.n_steps % self.target_update_steps == 0:
                     # print('Update target network')
@@ -366,8 +398,12 @@ class MAPPO(PPO):
             rewards_i = []
             infos_i = []
             state = padobs(env.reset(), self.obspad_dim)
-            action = [self.dist_action(agent, state)\
+            if self.is_dist:
+                action = [self.dist_action(agent, state)\
                       for agent in range(self.n_agent)]
+            else:
+                action = [self.action(agent, state) \
+                          for agent in range(self.n_agent)]
             one_hot_action = index_to_one_hot(action, self.action_dim)
             state, reward, done, info = env.step(one_hot_action)
             state = padobs(state, self.obspad_dim)
@@ -375,8 +411,12 @@ class MAPPO(PPO):
             rewards_i.append(reward)
             infos_i.append(info)
             while not done and steps < eval_steps:
-                action = [self.dist_action(agent, state)\
+                if self.is_dist:
+                    action = [self.dist_action(agent, state)\
                           for agent in range(self.n_agent)]
+                else:
+                    action = [self.action(agent, state) \
+                              for agent in range(self.n_agent)]
                 one_hot_action = index_to_one_hot(action, self.action_dim)
                 state, reward, done, info = env.step(one_hot_action)
                 state = padobs(state, self.obspad_dim)
@@ -384,7 +424,7 @@ class MAPPO(PPO):
                 rewards_i.append(reward)
                 infos_i.append(info)
                 if arguments.evalation:
-                   env.render()
+                   env.render('human')
                 steps += 1
             rewards.append(rewards_i)
             infos.append(infos_i)
@@ -424,3 +464,6 @@ class MAPPO(PPO):
             save_path = path + '_' + str(i) + '.'
             self.actors[i].load_state_dict(th.load(save_path+'actor'))
             self.critics[i].load_state_dict(th.load(save_path+'critic'))
+
+            self.critics_target[i].load_state_dict(self.critics[i].state_dict())
+            self.actors_target[i].load_state_dict(self.actors[i].state_dict())

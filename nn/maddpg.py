@@ -372,7 +372,7 @@ class MADDPG:
         # policy 可能为nan
         if np.any(np.isnan(policy.cpu().numpy())):
             assert (False)
-        policy = F.softmax(policy / temperature)
+        policy = F.softmax(policy / temperature, dim = 1)
         # assert((policy >= 0).sum() == 7)
         if sto: # stochastic process choose action based on action distribution
             m = Categorical(policy)

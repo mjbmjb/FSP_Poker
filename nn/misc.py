@@ -65,6 +65,7 @@ def onehot_from_logits(logits, eps=0.0):
                         enumerate(torch.rand(logits.shape[0]))])
 
 
+
 # modified for PyTorch from https://github.com/ericjang/gumbel-softmax/blob/master/Categorical%20VAE.ipynb
 def sample_gumbel(shape, eps=1e-20, tens_type=arguments.Tensor):
     """Sample from Gumbel(0, 1)"""
@@ -74,7 +75,7 @@ def sample_gumbel(shape, eps=1e-20, tens_type=arguments.Tensor):
     #     U = Variable(tens_type(shape).uniform_(), requires_grad=False)
 
     # modify to pytorch 1.0
-    U = arguments.Tensor(shape, device = arguments.device).uniform_()
+    U = torch.Tensor(shape).to(arguments.device).uniform_()
     return -torch.log(-torch.log(U + eps) + eps)
 
 # modified for PyTorch from https://github.com/ericjang/gumbel-softmax/blob/master/Categorical%20VAE.ipynb
@@ -101,3 +102,7 @@ def gumbel_softmax(logits, temperature=1.0, hard=False, eps=0.0):
         # y_hard = onthot_sto(y)
         y = (y_hard - y).detach() + y
     return y
+
+# Logit = torch.Tensor([[0.5,0.5]], device = arguments.device).log()
+# for _ in range(10):
+#     print(gumbel_softmax(Logit, hard = True))

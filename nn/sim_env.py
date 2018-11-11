@@ -130,6 +130,8 @@ class SimEnv:
                 sl.memory.push(state_tensor, action)
 
             # action[0][0] = action_taken
+            if (state_tensor.shape[1] != 133):
+                mjb = 1
             state_a[current_player] = state_tensor
             action_a[current_player] = onehot_a
 
@@ -235,7 +237,9 @@ class SimEnv:
         # street: 1-2 position 3 bets 4-5 private
         # 2 | 2 | 2 | 10 | 8 | 52 | 6 | 6
         return_tensor = torch.unsqueeze(torch.cat((street_tensor, position_tensor, active_tensor,
-                                         bet_tensor, pot_tensor, betting_his, private_tensor, board_tensor,) , 0), 0)
+                                         bet_tensor, pot_tensor,
+                                                   betting_his,
+                                                   private_tensor, board_tensor,) , 0), 0)
         return return_tensor
         
     def process_log(self, state, real_next_node, action, reward):

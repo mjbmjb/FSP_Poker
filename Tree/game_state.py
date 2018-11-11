@@ -42,7 +42,7 @@ class GameState(object):
         self.actions = []
         self.bet_sizing = []       
         
-        self.bets = arguments.IntTensor(game_settings.player_count).fill_(0)
+        self.bets = arguments.LongTensor(game_settings.player_count).fill_(0)
         self.bets[0] = 100
         self.bets[1] = 100
         
@@ -357,7 +357,7 @@ class GameState(object):
 
     def get_terminal_value(self):
         assert(self.terminal)
-        terminal_value = arguments.IntTensor(game_settings.player_count).fill_(0)
+        terminal_value = arguments.LongTensor(game_settings.player_count).fill_(0)
         max_bet = self.bets.max()
         sum_bet = self.bets.sum()
         show_player = (max_bet == self.bets)

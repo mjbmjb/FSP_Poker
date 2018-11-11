@@ -47,15 +47,15 @@ class MCritic(nn.Module):
         super(MCritic, self).__init__()
         aciton_size = action_dim * n_agent
         state_size = state_dim * n_agent
-        self.fc1 = nn.Linear(state_size, hidden_size)
-        self.fc2 = nn.Linear(hidden_size + aciton_size , hidden_size)
+        self.fc1 = nn.Linear(state_size + aciton_size, hidden_size)
+        self.fc2 = nn.Linear(hidden_size , hidden_size)
         self.fc3 = nn.Linear(hidden_size, output_size)
 
     def forward(self, states, actions):
-        state_out = nn.functional.relu(self.fc1(states))
-        # out = th.cat([out, action], 1)
-        combined = th.cat([state_out, actions], 1)
-        out = nn.functional.relu(self.fc2(combined))
+        combined = th.cat([states, actions], dim = 1)
+        out = nn.functional.relu(self.fc1(combined))
+        # combined = th.cat([state_out, actions], 1)
+        out = nn.functional.relu(self.fc2(out))
         out = self.fc3(out)
         return out
 
