@@ -1,22 +1,23 @@
 from random import randint
+import Settings.game_settings as game_settings
 
 class CardTool(object):
 
-    # rank = ['2', '3', '4', '5', '6', '7', '8', '9', 'T', 'J', 'Q', 'K', 'A']
-    # suit = ['c', 'd', 'h', 's']
+    rank = ['2', '3', '4', '5', '6', '7', '8', '9', 'T', 'J', 'Q', 'K', 'A']
+    suit = ['c', 'd', 'h', 's']
 
-    rank = [ 'T', 'J', 'Q', 'K', 'A']
-    suit = ['h', 's']
+    # rank = [ 'T', 'J', 'Q', 'K', 'A']
+    # suit = ['h', 's']
 
-#    rank = ['A', 'K', 'Q', 'J', 'T', '9', '8', '7', '6', '5', '4', '3', '2']
-#     suit = ['h', 's', 'c', 'd']
+    # rank = ['A', 'K', 'Q', 'J', 'T', '9', '8', '7', '6', '5', '4', '3', '2']
+    # suit = ['h', 's', 'c', 'd']
 
     # construct a dict key='ranksuit' value in 0-51
     card_dict ={}
-    for i in range(len(rank)):
-        for j in range(len(suit)):
-            str_temp = rank[i] + suit[j]
-            card_dict[str_temp] = i * len(suit) + j
+    for i in range(game_settings.rank_count):
+        for j in range(game_settings.suit_count):
+            str_temp = rank[i + (13 - game_settings.rank_count)] + suit[j + (4 - game_settings.suit_count)]
+            card_dict[str_temp] = i * game_settings.suit_count + j
 
     # a reverse dict of card_dict
     string_dict={}
@@ -25,7 +26,7 @@ class CardTool(object):
 
     # return int number represent card
     @classmethod
-    def string_2_card(cls, string):
+    def string_to_card(cls, string):
         return cls.card_dict[string]
 
     # return string represent card
@@ -35,12 +36,11 @@ class CardTool(object):
 
     @classmethod
     def rank_of_card(cls, card):
-        return card // 4
+        return card // game_settings.suit_count
 
     @classmethod
     def suit_of_card(cls, card):
-        return card % 4
-
+        return card % game_settings.suit_count
     @classmethod
     def deal_all_cards(cls, rd):
         dealed_cards = []

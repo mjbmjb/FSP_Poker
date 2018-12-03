@@ -114,7 +114,3 @@ def main():
     e = evaluator()
     print (e.batch_eval(torch.Tensor([]),-1))
     
-
-if __name__ == "__main__":
-    main()
-    

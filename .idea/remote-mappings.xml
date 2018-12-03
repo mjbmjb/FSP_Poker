@@ -10,6 +10,13 @@
             </list>
           </settings>
         </remote-mappings>
+        <remote-mappings server-id="python@sftp://carc@219.223.240.9:22/home/carc/miniconda3/envs/pytorch/bin/python">
+          <settings>
+            <list>
+              <mapping local-root="$PROJECT_DIR$" remote-root="/home/carc/mjb/deepStack" />
+            </list>
+          </settings>
+        </remote-mappings>
       </list>
     </list>
   </component>

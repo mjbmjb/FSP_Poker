@@ -17,13 +17,30 @@ import Settings.arguments as arguments
 from Player.six_player_machine import SixPlayerMachine
 from ACPC.six_acpc_game import SixACPCGame
 
+import argparse
+def get_args():
+  parser = argparse.ArgumentParser(description='Six_Player')
+  parser.add_argument('--host', type=str, default='127.0.0.1',
+                        help='host (default: 127.0.0.1)')
+  parser.add_argument('--port', type=int, default= 20000,
+                        help='port (default: False)')
+  parser.add_argument('--model_num', type=int, default=200,
+                        help='model_num (default: 200)')
+
+  args = parser.parse_args()
+  return args
+
+args = get_args()
+
 player_machine = SixPlayerMachine()
-player_machine.load_model(argv[3])
-#acpc_game = SixACPCGame(["MATCHSTATE:3:63:ccfcr18914cfcr20000fcc///:|Ac8d||Jd2s||8h7h/Kc5c6c/Ad/Jh"])
+player_machine.load_model(args.model_num)
+acpc_game = SixACPCGame(["MATCHSTATE:1:299:c:|Ks"])
 #acpc_game = SixACPCGame(["MATCHSTATE:2:22:cfcr5722r11771cccc/ccccr12969fccr15663fcc/:||3c6d|||/Th9c5d/Ks"])
 
-acpc_game = SixACPCGame(None)
-acpc_game.connect(argv[1], int(argv[2]))
+if arguments.evalation:
+    acpc_game = SixACPCGame(None)
+    acpc_game.connect(args.host, args.port)
+    print('connection finished')
 
 last_state = None
 last_node = None
@@ -40,3 +57,5 @@ while True:
     if adviced_action.atype != -1 and adviced_action.atype != -2:
         print("Raise Action: " + str(adviced_action))
         raction.append(adviced_action)
+
+    # print(raction)

@@ -72,7 +72,7 @@ from torch.nn.utils.convert_parameters import vector_to_parameters, parameters_t
 
 import Settings.arguments as arguments
 import Settings.game_settings as game_settings
-from torch.nn.init import normal, calculate_gain, kaiming_normal
+from torch.nn.init import normal_
 
 # if gpu is to be used
 use_cuda = torch.cuda.is_available()
@@ -106,8 +106,8 @@ Transition = namedtuple('Transition',
 
 def weights_init(m):
     if isinstance(m, nn.Linear):
-        normal(m.weight.data, mean=0.3, std=0.1)
-        normal(m.bias.data, mean=0, std=0.1)
+        normal_(m.weight.data, mean=0.0, std=0.1)
+        normal_(m.bias.data, mean=0, std=0.1)
 
 #def reservoir_sample(data, K):
 #    sample = []
@@ -217,19 +217,19 @@ class DQN(nn.Module):
 
     def __init__(self):
         super(DQN, self).__init__()
-        self.fc1 = nn.Linear(70, 64)
-        self.fc1_bn = nn.BatchNorm1d(64)
-        self.fc2 = nn.Linear(64,64)
-        self.fc2_bn = nn.BatchNorm1d(64)
-        self.fc3 = nn.Linear(64,64)
-        self.fc3_bn = nn.BatchNorm1d(64)
-        self.out = nn.Linear(64, 5)
+        self.fc1 = nn.Linear(arguments.dim_obs, 512)
+        self.fc1_bn = nn.BatchNorm1d(512)
+        # self.fc2 = nn.Linear(64,64)
+        # self.fc2_bn = nn.BatchNorm1d(64)
+        self.fc3 = nn.Linear(512,512)
+        self.fc3_bn = nn.BatchNorm1d(512)
+        self.out = nn.Linear(512, 5)
 
     def forward(self, x):
         x = self.fc1(x)
         x = F.relu(self.fc1_bn(x))
-        x = self.fc2(x)
-        x = F.relu(self.fc2_bn(x))
+        # x = self.fc2(x)
+        # x = F.relu(self.fc2_bn(x))
         x = self.fc3(x)
         x = F.relu(self.fc3_bn(x))
         
@@ -239,10 +239,10 @@ class DQN(nn.Module):
     def forward_fc(self, x):
         x = self.fc1(x)
         x = F.relu(self.fc1_bn(x))
-        x = self.fc2(x)
-        x = F.relu(self.fc2_bn(x))
+        # x = self.fc2(x)
+        # x = F.relu(self.fc2_bn(x))
         x = self.fc3(x)
-        x = F.relu(self.fc3_bn(x))
+        x = self.fc3_bn(x)
         return x
 
 
@@ -272,9 +272,9 @@ class DQNOptim:
     #    episode.
     #
     
-    def __init__(self, lr=1e-4):
+    def __init__(self, lr=1e-4, batch_size = arguments.batch_size):
         
-        self.BATCH_SIZE = 128
+        self.BATCH_SIZE = batch_size
         self.GAMMA = 1.0
         self.EPS_START = 0.9
         self.EPS_END = 0.05
@@ -320,14 +320,18 @@ class DQNOptim:
         eps_threshold = 0.06 / np.sqrt(self.steps_done)
 #        self.steps_done += 1
         if sample > eps_threshold:
-            return self.model(
-                Variable(state)).data.max(1)[1].view(1, 1)
+            action = self.model(state).data.max(1)[1].view((1, 1))
+            # print(self.model(state))
+            action = arguments.LongTensor(action)
+
         else:
             m = Categorical(arguments.dqn_init_policy)
-            action = arguments.LongTensor(1,1)
-            action[0] = m.sample()
-            return  action
-    
+            action = m.sample().view((1,1))
+        
+        one_hot = torch.eye(game_settings.actions_count)[action.cpu()].squeeze(1)
+        if arguments.gpu:
+            return action.cuda(), one_hot.cuda()
+        return action , one_hot
     
     
     def plot_error(self):
@@ -462,6 +466,6 @@ class DQNOptim:
         self.optimizer.zero_grad()
         loss.backward()
         for param in self.model.parameters():
-            param.grad.data.clamp_(0,1)
+            param.grad.data.clamp_(-1,1)
         self.optimizer.step()
     

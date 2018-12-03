@@ -11,6 +11,7 @@ from ACPC.msg_to_state import MsgToState
 import Settings.arguments as arguments
 import Settings.constants as constants
 import re
+import subprocess
 
 class SixACPCGame:
     #if you want to fake what messages the acpc dealer sends, put them in the following list and uncomment it.
@@ -30,8 +31,10 @@ class SixACPCGame:
     def connect(self, server, port):
       if not self.debug_msg:
         self.network_communication = ACPCNetworkCommunication()
+        if arguments.C_PLAYER:
+            self.run_agent(server, port)
         self.network_communication.connect(server, port)
-    
+
     # Receives and parses the next poker situation where DeepStack must act.
     # 
     # Blocks until the server sends a situation where DeepStack acts.
@@ -119,3 +122,9 @@ class SixACPCGame:
     
         if not self.debug_msg:
             self.network_communication.send_line(message)
+
+    # FIXME for education
+    def run_agent(self, host, port):
+        command = 'cd ../ABS && ./start.sh {} {}'.format(host, port)
+        sp = subprocess.Popen(command, shell = True)
+        sp.wait()
